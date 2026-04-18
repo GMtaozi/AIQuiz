@@ -354,7 +354,7 @@ class AIKnowledgeExtractor:
             desc = node.get("描述") if node.get("描述") is not None else node.get("description", "")
             result.append({
                 "name": str(name)[:100],
-                "description": str(desc)[:500] if desc else "",
+                "description": str(desc)[:2000] if desc else "",  # 扩展到2000字符，保留更多原文
                 "children": converted_children
             })
         return result
@@ -428,11 +428,15 @@ class AIKnowledgeExtractor:
 文档名称：{document_name or "未命名文档"}
 分类：{category}
 
+【重要说明】
+本系统用于司法鉴定、法律规范等需要高准确性的领域，题目必须严格基于原文生成。
+因此知识点必须存储完整的原始内容，而不是归纳总结。
+
 核心原则：
-- 知识点应该是归纳、提炼后的概念，而不是原文照抄
-- 避免提取具体条款号、具体数字、具体日期等原始数据
-- 用自己的话总结核心概念、原理、方法、制度要点
-- 顶层知识点名称完全从文档内容的主题出发，不使用文件名
+- 知识点名称 = 简洁的归纳标签（简短概念名称）
+- 知识点描述（description）= 该知识点对应的【完整原文内容】，必须原文照抄，不得归纳
+- 保留法条编号、条款号、具体数字、日期等所有原始信息
+- 顶层知识点名称从文档主题出发，不使用文件名
 
 严格限制：
 - 总知识点数量不超过{max_points}个（包含所有层级）
@@ -440,7 +444,7 @@ class AIKnowledgeExtractor:
 - 每个顶层知识点下最多8个子知识点
 - 每个子知识点下最多6个三级知识点
 - 每个三级知识点下最多5个四级知识点
-- 知识点的名称和描述必须是经过归纳总结后的内容
+- description 字段必须存储原始法条内容，长度可达2000字符，禁止归纳概括
 - 绝对不要把文件名、文件扩展名、文件路径用在任何知识点名称中
 
 要求：
@@ -449,9 +453,9 @@ class AIKnowledgeExtractor:
 3. 顶层知识点名称不要包含文件后缀（.doc、.pdf、.txt等）、编号（如"四"、"（一）"等前缀）、中括号（【】）等
 4. 每个主题下的核心概念、原理、方法等提取为子节点
 5. 名称应该简洁明了，如"什么是XXX"、"XXX的适用范围"、"XXX的处理流程"
-6. 描述应该用归纳性的语言概括核心要点，不要复制原文
+6. description 必须原文照抄相关法条内容，保留条款号和具体规定，这是生成题目的依据
 7. 必须构建有层次的树形结构，子知识点必须放在父知识点的"children"数组中
-8. 每个知识点包含：name（简洁的归纳名称）、description（核心要点归纳）、children（子节点数组）
+8. 每个知识点包含：name（简洁的归纳名称）、description（原始法条内容）、children（子节点数组）
 9. 只返回纯JSON，不要包含任何注释、说明或markdown标记
 10. 不要有尾随逗号
 
@@ -459,8 +463,8 @@ class AIKnowledgeExtractor:
 {{
   "knowledge_points": [
     {{
-      "name": "核心主题1（从文档内容提炼）",
-      "description": "该类别下知识点的总体概述，包含哪些方面的核心要点",
+      "name": "核心主题1（简洁归纳）",
+      "description": "该知识点对应的完整法条原文内容，原文照抄，保留条款号和具体规定",
       "children": [
         {{
           "name": "核心概念：XXX是什么",
@@ -560,7 +564,7 @@ class AIKnowledgeExtractor:
             count += 1
             new_node = {
                 "name": node.get("name", "未命名")[:100],
-                "description": (node.get("description", "") or "")[:500],
+                "description": (node.get("description", "") or "")[:2000],  # 扩展到2000字符
                 "children": []
             }
 
@@ -644,6 +648,10 @@ async def extract_knowledge_from_rules(
 文档名称：{document_name or "未命名文档"}
 分类：{category}
 
+【重要说明】
+本系统用于司法鉴定、法律规范等需要高准确性的领域，题目必须严格基于原文生成。
+因此知识点必须存储完整的原始内容，而不是归纳总结。
+
 你的任务是：
 1. 分析规则提取的知识点结构，判断是否合理
 2. 修正不准确的名称和描述
@@ -652,16 +660,16 @@ async def extract_knowledge_from_rules(
 5. 优化层级结构，使其更加合理
 
 核心原则：
-- 知识点应该是归纳、提炼后的概念，不是原文照抄
-- 避免提取具体条款号、具体数字、具体日期等原始数据
-- 用自己的话总结核心概念、原理、方法、制度要点
-- 顶层知识点名称完全从文档内容的主题出发，不使用文件名
+- 知识点名称 = 简洁的归纳标签
+- 知识点描述（description）= 该知识点对应的【完整原文内容】，必须原文照抄
+- 保留法条编号、条款号、具体数字、日期等所有原始信息
+- 顶层知识点名称从文档主题出发，不使用文件名
 
 严格限制：
 - 总知识点数量不超过{max_points}个（包含所有层级）
 - 层级最多4层
 - 每个顶层知识点下最多8个子知识点
-- 知识点的名称和描述必须是经过归纳总结后的内容
+- description 字段必须存储原始法条内容，禁止归纳概括
 
 规则提取的初始结构：
 {rule_json}
@@ -672,7 +680,7 @@ async def extract_knowledge_from_rules(
 要求：
 1. 以规则提取的结构为基础进行优化，不是完全重写
 2. 保持合理的层级结构
-3. 名称简洁明了，描述归纳核心要点
+3. 名称简洁明了，description 必须原文照抄法条内容
 4. 只返回纯JSON，不要包含任何注释或markdown标记
 5. 不要有尾随逗号
 
@@ -681,7 +689,7 @@ async def extract_knowledge_from_rules(
   "knowledge_points": [
     {{
       "name": "核心主题（简洁归纳）",
-      "description": "该主题下知识点的总体概述",
+      "description": "该知识点对应的完整法条原文内容，原文照抄",
       "children": [...]
     }}
   ]

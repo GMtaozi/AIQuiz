@@ -4,13 +4,13 @@ import logging
 import threading
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 from app.database import get_db
 from app.schemas.question import AiTemplateCreate, AiTemplateUpdate, AiTemplateResponse
 from app.models.question import AIPromptTemplate, GenerationTask, Question
 from app.models.knowledge import KnowledgePoint
-from app.services.ai_question import generate_questions, _call_ai_with_retry, _try_parse_questions_json
+from app.services.ai_question import generate_questions, _call_ai_with_retry, _try_parse_questions_json, _verify_questions
 from app.services.hybrid_question_generator import (
     build_kp_info_list, build_question_plans, rule_generate_questions,
     build_strategic_prompt, STRATEGY_MAP,
@@ -845,6 +845,41 @@ def _execute_generation_task(task_id: int, req_dict: dict):
 
             # 在新事件循环中运行异步代码，使用 asyncio.run() 更安全
             asyncio.run(_run_ai_generation())
+
+            # AI 题目校验：剔除答非所问的题目
+            if ai_questions:
+                # 构建完整知识点内容用于校验
+                all_kp_texts = []
+                for plan in plans:
+                    for kp in plan.knowledge_points:
+                        if kp.text:
+                            all_kp_texts.append(kp.text)
+                verify_knowledge = "\n".join(all_kp_texts)
+                if len(verify_knowledge) > 4000:
+                    verify_knowledge = verify_knowledge[:4000] + "\n...(更多知识点已省略)"
+
+                async def _run_verification():
+                    logger.info(f"[异步任务{task_id}] AI出题完成，开始校验 {len(ai_questions)} 道题目...")
+                    # 逐个题型校验
+                    questions_by_type: Dict[str, List[dict]] = {}
+                    for q in ai_questions:
+                        qt = q.get("question_type", "single_choice")
+                        if qt not in questions_by_type:
+                            questions_by_type[qt] = []
+                        questions_by_type[qt].append(q)
+
+                    verified_ai_questions = []
+                    for qt, q_list in questions_by_type.items():
+                        verified = await _verify_questions(q_list, verify_knowledge, qt)
+                        verified_ai_questions.extend(verified)
+                    return verified_ai_questions
+
+                verified_ai_questions = asyncio.run(_run_verification())
+                original_count = len(ai_questions)
+                ai_questions = verified_ai_questions
+                removed = original_count - len(ai_questions)
+                if removed > 0:
+                    logger.info(f"[异步任务{task_id}] 校验剔除 {removed} 道无效题目，剩余 {len(ai_questions)} 道")
 
         # 5. 合并结果
         task.progress = 80

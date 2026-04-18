@@ -189,6 +189,114 @@ def _try_parse_questions_json(text: str) -> Optional[List[dict]]:
     return None
 
 
+async def _verify_questions(
+    questions: List[dict],
+    knowledge_content: str,
+    question_type: str,
+) -> List[dict]:
+    """Verify generated questions against knowledge source.
+
+    Checks each question for:
+    - Answer can be derived from knowledge content
+    - Options are relevant and non-contradictory
+    - Question is complete (not truncated)
+    - No self-contradictions
+
+    Returns only questions that pass verification.
+    """
+    if not questions or not knowledge_content:
+        return questions
+
+    type_name_map = {
+        "single_choice": "单选题",
+        "multiple_choice": "多选题",
+        "true_false": "判断题",
+        "essay": "问答题",
+    }
+    type_label = type_name_map.get(question_type, question_type)
+
+    # 构建校验 prompt
+    questions_json = json.dumps(questions, ensure_ascii=False, indent=2)
+
+    verify_prompt = f"""你是一个专业的试题质量审核员。请审核以下{type_label}题目，验证它们是否可以从给定的知识点内容中正确推导。
+
+题型：{type_label}
+
+知识点内容：
+---
+{knowledge_content[:3000]}
+---
+
+待审核的题目（JSON格式）：
+{questions_json}
+
+审核标准：
+1. 选择题：正确答案必须能从知识点内容直接推导，干扰选项不能与知识点矛盾
+2. 判断题：题目必须完整（不是残缺的句子），答案必须明确
+3. 问答题：答案要点必须能从知识点内容中找到
+4. 所有题目：不能有答非所问、选项与题干无关、内容残缺（含"..."）等问题
+
+请对每道题目进行审核，返回JSON数组格式：
+[{{
+  "original_index": 0,  // 原始题目索引
+  "valid": true/false,  // 是否有效
+  "reason": "通过/无效原因"  // 简要说明
+}}]
+
+只返回JSON数组，不要包含其他文字。"""
+
+    try:
+        provider = get_ai_provider()
+        result_text = await provider.chat(
+            messages=[{"role": "user", "content": verify_prompt}],
+            max_tokens=4096,
+            temperature=0.3,
+        )
+
+        if not result_text:
+            logger.warning("题目校验：AI未返回结果，跳过校验")
+            return questions
+
+        # 解析校验结果
+        verified_data = None
+        try:
+            # 尝试直接解析
+            verified_data = json.loads(result_text.strip())
+        except json.JSONDecodeError:
+            # 尝试从文本中提取JSON
+            match = re.search(r'\[.*\]', result_text, re.DOTALL)
+            if match:
+                try:
+                    verified_data = json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+
+        if not verified_data or not isinstance(verified_data, list):
+            logger.warning("题目校验：解析校验结果失败，跳过校验")
+            return questions
+
+        # 过滤无效题目
+        valid_questions = []
+        invalid_count = 0
+        for item in verified_data:
+            idx = item.get("original_index", -1)
+            if item.get("valid", True) and 0 <= idx < len(questions):
+                valid_questions.append(questions[idx])
+            else:
+                invalid_count += 1
+                reason = item.get("reason", "未知原因")
+                logger.info(f"题目校验：第{idx}题无效 - {reason}")
+
+        if invalid_count > 0:
+            logger.info(f"题目校验完成：{len(valid_questions)}/{len(questions)} 题通过，{invalid_count} 题被剔除")
+
+        return valid_questions
+
+    except Exception as e:
+        logger.error(f"题目校验异常：{str(e)}，跳过校验")
+        return questions
+
+
 async def generate_questions(
     subject_id: int,
     subject_name: str,
@@ -297,5 +405,10 @@ async def generate_questions(
 
     if len(all_processed) < total_expected:
         logger.warning(f"最终生成 {len(all_processed)}/{total_expected} 题，缺少 {total_expected - len(all_processed)} 题")
+
+    # 题目校验：AI自检，剔除答非所问的题目
+    if all_processed and safe_knowledge:
+        logger.info(f"开始题目校验，共 {len(all_processed)} 题...")
+        all_processed = await _verify_questions(all_processed, safe_knowledge, question_type)
 
     return all_processed
