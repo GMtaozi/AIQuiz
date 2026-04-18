@@ -1,0 +1,82 @@
+// AI考试系统设计系统变量
+// 主色调
+$primary-color: #165DFF;
+$primary-hover: #4080FF;
+$primary-light: #4080FF;
+$primary-lighter: #95C3FF;
+$primary-dark: #0D47A1;
+
+// 功能色
+$success-color: #67C23A;
+$warning-color: #E6A23C;
+$danger-color: #F56C6C;
+$info-color: #909399;
+
+// 中性色
+$text-primary: #303133;
+$text-regular: #606266;
+$text-secondary: #909399;
+$text-placeholder: #C0C4CC;
+$border-base: #DCDFE6;
+$border-light: #E4E7ED;
+$border-default: #DCDFE6;
+$border-lighter: #EBEEF5;
+$border-extra-light: #F2F6FC;
+$bg-page: #F5F7FA;
+$bg-base: #FFFFFF;
+
+// 深色模式变量
+$dark-bg: #0D1117;
+$dark-bg-secondary: #161B22;
+$dark-bg-tertiary: #21262D;
+$dark-text-primary: #E6E8EB;
+$dark-text-secondary: #8B949E;
+$dark-border: #30363D;
+
+// 字体
+$font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemF, sans-serif;
+$font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+
+// 字号
+$font-size-xs: 12px;
+$font-size-sm: 13px;
+$font-size-base: 14px;
+$font-size-lg: 16px;
+$font-size-xl: 18px;
+$font-size-2xl: 20px;
+$font-size-3xl: 24px;
+
+// 间距
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+$spacing-base: 16px;
+$spacing-lg: 20px;
+$spacing-xl: 24px;
+$spacing-2xl: 32px;
+$spacing-3xl: 40px;
+
+// 圆角
+$radius-sm: 2px;
+$radius-base: 4px;
+$radius-md: 6px;
+$radius-lg: 8px;
+$radius-xl: 12px;
+$radius-full: 9999px;
+
+// 阴影
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$shadow-base: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+$shadow-md: 0 4px 8px 0 rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 8px 16px 0 rgba(0, 0, 0, 0.15);
+$shadow-xl: 0 12px 24px 0 rgba(0, 0, 0, 0.2);
+
+// 过渡
+$transition-fast: 0.15s ease;
+$transition-base: 0.25s ease;
+$transition-slow: 0.35s ease;
+
+// 布局
+$header-height: 64px;
+$sidebar-width: 220px;
+$sidebar-collapsed-width: 64px;
