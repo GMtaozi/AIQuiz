@@ -1,106 +1,66 @@
-# AI ×Ô¶¯³öÌâÏµÍ³
+# æ™ºé¢˜ AIQuiz
 
-AI-powered exam question generation and exam management system.
+AI æ™ºèƒ½é¢˜åº“ç³»ç»Ÿï¼Œæ”¯æŒ AI å‡ºé¢˜ã€æ™ºèƒ½ç»„å·ã€è¯•é¢˜å®¡æ ¸ã€‚
 
-## ¼¼ÊõÕ»
+## æŠ€æœ¯æ ˆ
 
-- **ºó¶Ë**: Python 3.11 / FastAPI / SQLAlchemy / PostgreSQL 15
-- **Ç°¶Ë**: Vue 3 / Vite / Element Plus
-- **ÈİÆ÷**: Docker / Docker Compose
+- **åç«¯**: Python 3.11 / FastAPI / SQLAlchemy / PostgreSQL
+- **å‰ç«¯**: Vue 3 / Vite / Element Plus
+- **AIæœåŠ¡**: MiniMax API
+- **éƒ¨ç½²**: Docker / Docker Compose
 
-## ÏîÄ¿½á¹¹
+## é¡¹ç›®ç»“æ„
 
-`
+```
 project/
-©À©¤©¤ backend/              # ºó¶Ë·şÎñ
-©¦   ©À©¤©¤ app/              # Ó¦ÓÃ´úÂë
-©¦   ©À©¤©¤ sql/              # SQL ½Å±¾
-©¦   ©À©¤©¤ tests/            # ²âÊÔÓÃÀı
-©¦   ©À©¤©¤ Dockerfile
-©¦   ©¸©¤©¤ requirements.txt
-©À©¤©¤ frontend/             # Ç°¶Ë·şÎñ
-©¦   ©À©¤©¤ src/              # Ô´´úÂë
-©¦   ©À©¤©¤ Dockerfile
-©¦   ©¸©¤©¤ nginx.conf
-©À©¤©¤ deploy/               # ²¿ÊğÅäÖÃ
-©¦   ©À©¤©¤ docker-compose.yml
-©¦   ©À©¤©¤ .env.example
-©¦   ©¸©¤©¤ init.sql
-©¸©¤©¤ README.md
-`
+â”œâ”€â”€ backend/              # FastAPI åç«¯
+â”‚   â””â”€â”€ app/              # åº”ç”¨æ ¸å¿ƒä»£ç 
+â”œâ”€â”€ frontend/             # Vue 3 å‰ç«¯
+â”‚   â””â”€â”€ src/              # æºä»£ç 
+â”œâ”€â”€ deploy/               # Docker éƒ¨ç½²é…ç½®
+â””â”€â”€ openspec/             # å˜æ›´ç®¡ç†
+```
 
-## ¿ìËÙ²¿Êğ
+## å¿«é€Ÿå¯åŠ¨
 
-### Ç°ÖÃÌõ¼ş
+### Docker éƒ¨ç½²
 
-- Docker 20.10+
-- Docker Compose v2+
-
-### Æô¶¯²½Öè
-
-`ash
+```bash
 cd deploy
-
-# ¸´ÖÆ»·¾³±äÁ¿ÎÄ¼ş²¢±à¼­
 cp .env.example .env
-# ±à¼­ .env£¬ÌîÈëÕæÊµµÄ SECRET_KEY¡¢MINIMAX_API_KEY¡¢MINIMAX_GROUP_ID
-
-# Æô¶¯ËùÓĞ·şÎñ
+# ç¼–è¾‘ .env é…ç½® SECRET_KEY å’Œ MINIMAX_API_KEY
 docker-compose up -d
+```
 
-# ²é¿´·şÎñ×´Ì¬
-docker-compose ps
-`
+è®¿é—® http://localhost:3000
 
-·ÃÎÊ http://localhost:3000
+### æœ¬åœ°å¼€å‘
 
-### ·şÎñ¶Ë¿Ú
-
-| ·şÎñ | ¶Ë¿Ú | ËµÃ÷ |
-|------|------|------|
-| frontend | 3000 | Ç°¶ËÒ³Ãæ |
-| backend | 8000 | API ·şÎñ |
-| db | 5432 | PostgreSQL |
-| redis | 6379 | Redis£¨Ô¤Áô£© |
-
-### ³£ÓÃÃüÁî
-
-`ash
-# ²é¿´ÈÕÖ¾
-docker-compose logs -f backend
-docker-compose logs -f frontend
-
-# ÖØÆô·şÎñ
-docker-compose restart backend
-
-# Í£Ö¹·şÎñ
-docker-compose down
-
-# Çå³ıËùÓĞÊı¾İ£¨É÷ÓÃ£©
-docker-compose down -v
-`
-
-## ¿ª·¢
-
-### ºó¶Ë
-
-`ash
+**åç«¯ï¼š**
+```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-`
+uvicorn app.main:app --reload --port 8000
+```
 
-### Ç°¶Ë
-
-`ash
+**å‰ç«¯ï¼š**
+```bash
 cd frontend
 npm install
 npm run dev
-`
+```
 
-## ¸½¼Ó½¨Òé
+## ç«¯å£è¯´æ˜
 
-1. **Redis**: µ±Ç°¼Ü¹¹ÔİÎ´Ê¹ÓÃ Redis£¬µ«ÒÑÔÚ docker-compose.yml ÖĞÔ¤Áô£¬·½±ãºóĞøÀ©Õ¹£¨»º´æ¡¢Session µÈ£©
-2. **Êı¾İ¿â±¸·İ**: ½¨ÒéÅäÖÃ PostgreSQL ¶¨ÆÚ±¸·İ²ßÂÔ£¬±¸·İ½Å±¾¿É¹ÒÔØµ½ deploy/backup/
-3. **Nginx ·´Ïò´úÀí**: Ç°¶Ë Dockerfile ÒÑÄÚÖÃ Nginx£¬ÎŞĞè¶îÍâÅäÖÃ£»Èç¹ûĞèÒª HTTPS »ò¶àÓòÃû£¬¿ÉÔÚÇ°ÃæÔÙ¼ÓÒ»²ã Nginx
-4. **½¡¿µ¼ì²é**: PostgreSQL ÅäÖÃÁË healthcheck£¬È·±£Êı¾İ¿â¾ÍĞ÷ºóÔÙÆô¶¯ºó¶Ë
+| æœåŠ¡ | ç«¯å£ | è¯´æ˜ |
+|------|------|------|
+| frontend | 3000 | å‰ç«¯é¡µé¢ |
+| backend | 8000 | API æœåŠ¡ |
+| db | 5432 | PostgreSQL |
+
+## ä¸»è¦åŠŸèƒ½
+
+- **AI å‡ºé¢˜**: é€‰æ‹©çŸ¥è¯†ç‚¹ã€é¢˜å‹ã€éš¾åº¦ï¼ŒAI è‡ªåŠ¨ç”Ÿæˆé¢˜ç›®
+- **æ™ºèƒ½ç»„å·**: è®¾ç½®å‚æ•°è‡ªåŠ¨ç»„åˆè¯•å·ï¼Œæ”¯æŒ Word/PDF å¯¼å‡º
+- **é¢˜åº“ç®¡ç†**: é¢˜ç›® CRUDã€æ‰¹é‡å¯¼å…¥ã€å®¡æ ¸æµç¨‹
+- **ç”¨æˆ·æƒé™**: åŸºäºè§’è‰²çš„æƒé™æ§åˆ¶
