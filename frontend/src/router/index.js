@@ -131,7 +131,7 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.requiresAuth) {
-    if (!authStore.token) {
+    if (!authStore.isLoggedIn) {
       next({ name: 'Login' })
       return
     }

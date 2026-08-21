@@ -268,7 +268,7 @@ const handleRegister = async () => {
       email: registerForm.username + '@example.com',
       password: registerForm.password
     })
-    if (result.data?.access_token) {
+    if (result.data) {
       ElMessage.success('注册成功，请登录')
       router.push('/login')
     }

@@ -6,23 +6,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 300000,  // 5分钟超时，用于AI出题等长时间操作
+  withCredentials: true, // 认证令牌由 httpOnly cookie 承载，跨域时必须携带凭据
   headers: {
     'Content-Type': 'application/json'
   }
 })
-
-api.interceptors.request.use(
-  config => {
-    const authStore = useAuthStore()
-    if (authStore.token) {
-      config.headers.Authorization = `Bearer ${authStore.token}`
-    }
-    return config
-  },
-  error => {
-    return Promise.reject(error)
-  }
-)
 
 api.interceptors.response.use(
   response => {
@@ -43,11 +31,22 @@ api.interceptors.response.use(
     return response
   },
   error => {
-    if (error.response?.status === 401) {
-      const authStore = useAuthStore()
-      authStore.logout()
-      window.location.href = '/login'
+    const originalRequest = error.config || {}
+    const url = originalRequest.url || ''
+    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh')
+
+    // 401 且非认证端点：先尝试刷新 cookie 并重放一次（每个请求最多重试一次）
+    if (error.response?.status === 401 && !originalRequest._retried && !isAuthEndpoint) {
+      originalRequest._retried = true
+      return api.post('/auth/refresh')
+        .then(() => api(originalRequest))
+        .catch(() => {
+          useAuthStore().logout()
+          window.location.href = '/login'
+          return Promise.reject(error)
+        })
     }
+    // 登录/刷新自身的 401（如密码错误）不触发跳转，交由调用方展示错误
 
     const data = error.response?.data || {}
     // Prefer `message` (safe, user-facing); fall back to `detail` for backward compat

@@ -2,35 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/api'
 
-// Simple XOR encryption for localStorage token (not as secure as proper encryption,
-// but better than plain text. In production, use httpOnly cookies instead.)
-const ENCRYPTION_KEY = '__secure_storage_key__'
-
-function xorEncrypt(text, key) {
-  if (!text) return ''
-  let result = ''
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-  }
-  return btoa(result)
-}
-
-function xorDecrypt(encoded, key) {
-  if (!encoded) return ''
-  try {
-    const text = atob(encoded)
-    let result = ''
-    for (let i = 0; i < text.length; i++) {
-      result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length))
-    }
-    return result
-  } catch {
-    return ''
-  }
-}
-
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(xorDecrypt(localStorage.getItem('token') || '', ENCRYPTION_KEY))
+  // 认证令牌由后端 httpOnly cookie 承载（JS 不可读，防 XSS 窃取），
+  // 前端仅缓存非敏感的用户信息用于渲染与权限判断。
   // 评估修复：localStorage 数据损坏时 JSON.parse 抛异常会导致整页白屏，加 try/catch 兜底
   let cachedUser = null
   try {
@@ -40,40 +14,25 @@ export const useAuthStore = defineStore('auth', () => {
   }
   const user = ref(cachedUser)
 
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.role === 1)
 
   async function login(username, password) {
     try {
       const response = await api.post('/auth/login/json', { username, password })
-      token.value = response.data.access_token
 
-      // 获取完整用户信息
-      try {
-        const userResponse = await api.get('/auth/me')
-        user.value = {
-          id: userResponse.data.id,
-          username: userResponse.data.username,
-          email: userResponse.data.email,
-          role: userResponse.data.role,
-          menu_permissions: response.data.menu_permissions || {},
-          needsAdminApproval: response.data.needs_admin_approval || false
-        }
-        localStorage.setItem('user', JSON.stringify(user.value))
-      } catch {
-        // 如果获取用户信息失败，至少使用JWT中的信息
-        const payload = response.data.access_token.split('.')[1]
-        const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
-        user.value = {
-          id: decoded.sub,
-          role: decoded.role || 3,
-          menu_permissions: response.data.menu_permissions || {},
-          needsAdminApproval: response.data.needs_admin_approval || false
-        }
-        localStorage.setItem('user', JSON.stringify(user.value))
+      // 登录成功后 cookie 已由后端 Set-Cookie 种下，这里获取完整用户信息
+      const userResponse = await api.get('/auth/me')
+      user.value = {
+        id: userResponse.data.id,
+        username: userResponse.data.username,
+        email: userResponse.data.email,
+        role: userResponse.data.role,
+        menu_permissions: response.data.menu_permissions || {},
+        needsAdminApproval: response.data.needs_admin_approval || false
       }
-      // Store encrypted token
-      localStorage.setItem('token', xorEncrypt(token.value, ENCRYPTION_KEY))
+      localStorage.setItem('user', JSON.stringify(user.value))
+      localStorage.removeItem('token') // 清理历史版本遗留的 localStorage token
       return { success: true }
     } catch (error) {
       return { success: false, message: error.response?.data?.message || error.response?.data?.detail || '登录失败' }
@@ -81,10 +40,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    token.value = ''
     user.value = null
-    localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('token')
+    // 尽力通知后端清除 httpOnly cookie（失败不影响本地登出）
+    api.post('/auth/logout').catch(() => {})
   }
 
   function getDefaultPermissions(role) {
