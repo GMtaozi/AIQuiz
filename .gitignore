@@ -51,3 +51,10 @@ temp/
 
 # OpenSpec (keep source but ignore build artifacts)
 openspec/changes/archive/
+
+# 评估 P2-10：仓库卫生补充
+.zcode/
+gui-test-screenshots/
+*.bak
+.claude/settings.local.json
+*.tsbuildinfo

@@ -1,0 +1,92 @@
+# Ruff 配置：统一后端代码风格与静态检查
+# 参照：https://docs.astral.sh/ruff/
+
+# ===== 基础设置 =====
+line-length = 120
+target-version = "py311"
+src = ["app", "tests", "scripts"]
+
+# ===== 排除目录 =====
+exclude = [
+  ".git",
+  "__pycache__",
+  ".pytest_cache",
+  "dist",
+  "build",
+  "venv",
+  ".venv",
+  "node_modules",
+  "alembic/versions",  # 自动生成的迁移文件，风格由 alembic 控制
+]
+
+# ===== Lint 规则 =====
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "N",   # pep8-naming
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "ARG", # flake8-unused-arguments
+  "ERA", # flake8-eradicate
+  "S",   # flake8-bandit
+  "RUF", # Ruff-specific
+]
+ignore = [
+  "E501",  # line-too-long (line-length 已配置)
+  "N802",  # function name should be lowercase
+  "N803",  # argument name should be lowercase
+  "N815",  # variable name should be lowercase
+  "N816",  # variable name should be lowercase
+  "S101",  # assert used
+  "S108",  # insecure temp file
+  "S603",  # subprocess call
+  "S607",  # partial executable path
+  "UP006", # Use list instead of List
+  "UP007", # Use X | Y instead of Union
+  "UP035", # Import from X
+  "RUF001", # 中文注释全角标点
+  "RUF002", # 中文注释全角括号
+  "RUF003", # 中文注释全角空格
+  # FastAPI 常用模式，暂忽略
+  "B008",  # Do not perform function call in argument defaults (FastAPI Depends)
+  "ARG001", # Unused function argument (FastAPI handlers often have unused params)
+  "B904",  # raise ... from err (已有 try/except 块，暂忽略)
+  "S311",  # Standard pseudo-random generators (AI 出题需要随机)
+  "S105",  # Possible hardcoded password (config 校验逻辑)
+  "S110",  # try/except/pass with Exception (已知的降级处理)
+  # 较多噪音，暂忽略，后续逐步清理
+  "F401",  # Unused import
+  "F841",  # Unused local variable
+  "F821",  # Undefined name (ForwardRef 相关)
+  "E712",  # == True/False comparison
+  "E722",  # Bare except
+  "B007",  # Unused loop variable
+  "RUF013", # Optional[X] instead of X | None
+  "ERA001", # Commented-out code
+  "SIM118", # key in dict.keys() → key in dict
+  "SIM108", # Nested if conditions
+  "SIM102", # Nested if statements
+  "SIM103", # Boolean comparison
+  "SIM105", # Alternative condition
+  "ARG002", # Unused method argument
+  "W293",   # Whitespace issues
+  "N806",   # Variable naming convention
+  "E402",   # Module-level import not at top
+  "UP042",  # Nested class def
+  "C401",   # Unnecessary list comprehension
+  "S112",   # try/except/pass
+  "RUF012", # Mutable class attribute (class-level constants are intentional)
+]
+
+[lint.isort]
+known-first-party = ["app", "tests"]
+known-third-party = ["fastapi", "sqlalchemy", "pydantic", "jose", "passlib", "bcrypt"]
+split-on-trailing-comma = true
+force-single-line = false
+force-sort-within-sections = true
+order-by-type = true
