@@ -25,24 +25,43 @@ api.interceptors.request.use(
 )
 
 api.interceptors.response.use(
-  response => response,
+  response => {
+    const data = response.data
+
+    // 兼容统一响应结构 { code, message, data }
+    if (data && typeof data === 'object' && 'code' in data) {
+      const code = Number(data.code)
+      if (code >= 200 && code < 300) {
+        // 成功响应：直接返回 data 字段，保持业务代码调用方式不变
+        return { ...response, data: data.data ?? data }
+      }
+      // 非成功码：当成错误处理
+      const message = data.message || data.detail || '请求失败'
+      return Promise.reject(new Error(message))
+    }
+
+    return response
+  },
   error => {
     if (error.response?.status === 401) {
       const authStore = useAuthStore()
       authStore.logout()
       window.location.href = '/login'
     }
-    // Don't expose internal error details
-    if (error.response?.data?.detail) {
-      const detail = error.response.data.detail
+
+    const data = error.response?.data || {}
+    // Prefer `message` (safe, user-facing); fall back to `detail` for backward compat
+    const errMsg = data.message || data.detail
+
+    if (errMsg) {
       // FastAPI 422 验证错误返回 [{loc, msg, type}, ...] 数组
-      if (Array.isArray(detail)) {
-        const msgs = detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+      if (Array.isArray(errMsg)) {
+        const msgs = errMsg.map(d => d.msg || JSON.stringify(d)).join('; ')
         return Promise.reject(new Error(msgs))
       }
-      return Promise.reject(new Error(String(detail)))
+      return Promise.reject(new Error(String(errMsg)))
     }
-    console.error('API Error:', error.config?.url, error.response?.status, error.response?.data)
+    console.error('API Error:', error.config?.url, error.response?.status, data)
     return Promise.reject(error)
   }
 )
@@ -65,11 +84,13 @@ export const adminAPI = {
   updateQuestion: (id, data) => api.put(`/questions/${id}`, data),
   deleteQuestion: (id) => api.delete(`/questions/${id}`),
   batchDeleteQuestions: (ids) => api.post('/questions/batch-delete', { ids }),
-  batchUpdateQuestionStatus: (ids, data) => api.put('/questions/batch-status', { ids, ...data }),
+  // 评估 P2-15：后端 batch-status 是 POST（此前误用 PUT 导致必然 405）
+  batchUpdateQuestionStatus: (ids, data) => api.post('/questions/batch-status', { ids, ...data }),
   generateQuestions: (data) => api.post('/ai/generate', data),
   hybridGenerate: (data) => api.post('/ai/hybrid-generate', data),
   hybridGenerateAsync: (data) => api.post('/ai/hybrid-generate-async', data),
   getTaskProgress: (taskId) => api.get(`/ai/task/${taskId}/progress`),
+  cancelTask: (taskId) => api.post(`/ai/task/${taskId}/cancel`),
   listTasks: (params) => api.get('/ai/tasks', { params }),
   getPapers: (params) => api.get('/papers/', { params }),
   getPaperById: (id) => api.get(`/papers/${id}`),
@@ -79,12 +100,8 @@ export const adminAPI = {
   exportQuestions: (params) => api.get('/questions/export', { params, responseType: 'blob' }),
 }
 
-// AI 出题相关
-export const aiAPI = {
-  generateQuestions: (data) => api.post('/question/generate', data),
-  getGenerateStatus: (taskId) => api.get(`/question/generate/${taskId}/status`),
-  getGenerateResult: (taskId) => api.get(`/question/generate/${taskId}/result`)
-}
+// AI 出题相关（评估 P2-5：删除死代码 aiAPI——原指向不存在的 /question/generate 端点，
+// 实际出题走 adminAPI.generateQuestions / hybridGenerate / hybridGenerateAsync）
 
 // 试题审核相关
 export const auditAPI = {
@@ -102,11 +119,66 @@ export const auditAPI = {
 // 智能组卷相关
 export const paperAPI = {
   autoGenerate: (data) => api.post('/papers/auto-generate', data),
+  autoGenerateAB: (data) => api.post('/papers/auto-generate-ab', data),
   getAutoGeneratePreview: (data) => api.post('/papers/auto-generate/preview', data),
   getDifficultyDistribution: (data) => api.post('/papers/difficulty-distribution', data),
-  saveAsTemplate: (data) => api.post('/papers/templates', data),
-  getTemplates: () => api.get('/papers/templates'),
-  getGenerateProgress: (taskId) => api.get(`/papers/generate/${taskId}/progress`)
+  generatePaperOutline: (data) => api.post('/papers/outline', data),
+  saveAsTemplate: (data) => api.post('/paper-templates/', data),
+  getTemplates: (params) => api.get('/paper-templates/', { params }),
+  getTemplate: (id) => api.get(`/paper-templates/${id}`),
+  updateTemplate: (id, data) => api.put(`/paper-templates/${id}`, data),
+  deleteTemplate: (id) => api.delete(`/paper-templates/${id}`),
+  duplicateTemplate: (id, data) => api.post(`/paper-templates/${id}/duplicate`, data),
+  // 模板市场
+  getMarketplaceTemplates: (params) => api.get('/paper-templates/marketplace', { params }),
+  recommendTemplates: (params) => api.get('/paper-templates/recommend', { params }),
+  useTemplate: (id) => api.post(`/paper-templates/${id}/use`),
+  rateTemplate: (id, rating) => api.post(`/paper-templates/${id}/rate`, null, { params: { rating } }),
+  shareTemplate: (id, data) => api.post(`/paper-templates/${id}/share`, data),
+  getGenerateProgress: (taskId) => api.get(`/papers/generate/${taskId}/progress`),
+  // 试卷 CRUD
+  createPaper: (data) => api.post('/papers/', data),
+  getPaper: (id) => api.get(`/papers/${id}`),
+  updatePaper: (id, data) => api.put(`/papers/${id}`, data),
+  deletePaper: (id) => api.delete(`/papers/${id}`),
+  publishPaper: (id) => api.post(`/papers/${id}/publish`),
+  // 导出
+  exportPaper: (id, format) => api.post('/papers/export', { paper_id: id, format }, { responseType: 'blob' }),
+  // 分析
+  getPaperAnalysis: (id) => api.get(`/papers/${id}/analysis`),
+  checkSimilarity: (id, data) => api.post(`/papers/${id}/similarity-check`, data),
+  // 版本管理
+  getPaperVersions: (paperId, params) => api.get(`/paper-versions/${paperId}/versions`, { params }),
+  createPaperVersion: (paperId, data) => api.post(`/paper-versions/${paperId}/versions`, data),
+  getPaperVersion: (paperId, versionId) => api.get(`/paper-versions/${paperId}/versions/${versionId}`),
+  restorePaperVersion: (paperId, versionId) => api.post(`/paper-versions/${paperId}/versions/${versionId}/restore`),
+  comparePaperVersion: (paperId, versionId) => api.get(`/paper-versions/${paperId}/versions/${versionId}/compare`)
+}
+
+// 知识库管理
+export const knowledgeBaseAPI = {
+  list: (params) => api.get('/knowledge-bases/', { params }),
+  create: (data) => api.post('/knowledge-bases/', data),
+  get: (id) => api.get(`/knowledge-bases/${id}`),
+  update: (id, data) => api.put(`/knowledge-bases/${id}`, data),
+  delete: (id) => api.delete(`/knowledge-bases/${id}`),
+  // 文档上传
+  uploadDocument: (id, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/knowledge-bases/${id}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  // 知识条目
+  getEntries: (id, params) => api.get(`/knowledge-bases/${id}/entries`, { params }),
+  getEntry: (kbId, entryId) => api.get(`/knowledge-bases/${kbId}/entries/${entryId}`),
+  // 从条目提取/导入知识点
+  analyzeEntry: (kbId, entryId, mode) => api.post(`/knowledge-bases/${kbId}/entries/${entryId}/analyze`, { mode }),
+  importEntry: (kbId, entryId, data) => api.post(`/knowledge-bases/${kbId}/entries/${entryId}/import`, data),
+  analyzeAll: (kbId) => api.post(`/knowledge-bases/${kbId}/analyze-all`),
+  // 知识库下知识点
+  getPoints: (id, params) => api.get(`/knowledge-bases/${id}/points`, { params }),
 }
 
 // 知识点管理
@@ -137,6 +209,10 @@ export const knowledgeAPI = {
     return api.put(`/knowledge/${id}`, payload)
   },
   deleteNode: (id) => api.delete(`/knowledge/${id}`),
+  importFile: (formData) => api.post('/knowledge/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getKnowledgePointQuestions: (knowledgeId) => api.get(`/knowledge/${knowledgeId}/questions`),
   getNodesByCategory: (category) => api.get(`/knowledge/category/${category}`),
   // AI 智能导入
   aiAnalyze: (formData) => api.post('/knowledge/ai/analyze', formData, {
@@ -188,7 +264,8 @@ export const questionBankAPI = {
   },
   exportQuestions: (params) => api.get('/questions/export', { params, responseType: 'blob' }),
   getQuestionDetail: (id) => api.get(`/questions/${id}`),
-  getStatistics: () => api.get('/questions/statistics')
+  getStatistics: () => api.get('/questions/statistics'),
+  checkSimilarity: (params) => api.get('/questions/similarity-check', { params })
 }
 
 // 科目管理
@@ -206,7 +283,8 @@ export const systemAPI = {
   // AI配置
   getAiConfig: () => api.get('/system/ai-config'),
   updateAiConfig: (data) => api.put('/system/ai-config', data),
-  testAiConnection: () => api.post('/system/ai-config/test'),
+  testAiConnection: (data) => api.post('/system/ai-config/test', data),
+  getAiProviders: () => api.get('/system/ai-providers'),
   // 角色权限配置
   getRolePermissions: () => api.get('/system/role-permissions'),
   updateRolePermissions: (role, permissions) => api.put(`/system/role-permissions/${role}`, { role, permissions }),

@@ -62,7 +62,7 @@
 
             <!-- 题型选择 -->
             <el-form-item label="题目类型">
-              <el-checkbox-group v-model="configForm.questionTypes">
+              <el-checkbox-group v-model="configForm.questionTypes" class="question-types-group">
                 <el-checkbox value="choice">单选题</el-checkbox>
                 <el-checkbox value="multiple">多选题</el-checkbox>
                 <el-checkbox value="judge">判断题</el-checkbox>
@@ -259,7 +259,7 @@
                 <rect x="55" y="80" width="80" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
                 <rect x="55" y="95" width="60" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
                 <circle cx="160" cy="40" r="25" fill="#00B42A" opacity="0.2"/>
-                <link x="160" y="46" link-anchor="middle" fill="#00B42A" font-size="20">?</link>
+                <text x="160" y="46" text-anchor="middle" fill="#00B42A" font-size="20">?</text>
               </svg>
             </div>
             <div class="empty-link">配置参数后点击"开始生成"<br/>AI将为您智能生成题目</div>
@@ -360,7 +360,7 @@
     <el-dialog v-model="editDialogVisible" title="编辑题目" width="700px">
       <el-form :model="editingQuestion" label-position="top">
         <el-form-item label="题目内容">
-          <el-input v-model="editingQuestion.content" type="linkarea" :rows="3" />
+          <el-input v-model="editingQuestion.content" type="textarea" :rows="3" />
         </el-form-item>
         <el-form-item label="题目类型">
           <el-select v-model="editingQuestion.type" style="width: 100%">
@@ -395,7 +395,7 @@
           </el-form-item>
         </template>
         <el-form-item v-else label="正确答案">
-          <el-input v-model="editingQuestion.answer" type="linkarea" :rows="2" />
+          <el-input v-model="editingQuestion.answer" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -411,43 +411,52 @@ import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { systemAPI, knowledgeAPI, adminAPI, aiAPI } from '@/api'
 import { DArrowRight, MagicStick, DArrowLeft, Check } from '@element-plus/icons-vue'
+import { useGeneration } from '@/composables/useGeneration'
 
-// 状态
+// Local UI state (not part of generation logic)
 const currentStep = ref(0)
 const configPanelVisible = ref(true)
-const generating = ref(false)
-const generationStatus = ref('')
-const currentTaskId = ref('')
-const startTime = ref('')
-const remainingTime = ref('')
-const progressPercentage = ref(0)
-const progressStatus = ref('')
-const logs = ref([])
-const logContainerRef = ref(null)
 const knowledgeTreeRef = ref(null)
-const selectAll = ref(false)
 const editDialogVisible = ref(false)
+const editingQuestion = reactive({
+  content: '',
+  type: 'choice',
+  difficulty: 'medium',
+  optionA: '',
+  optionB: '',
+  optionC: '',
+  optionD: '',
+  answer: ''
+})
 const editingQuestionIndex = ref(-1)
-const historyFilter = ref('')
 
-// 生成任务控制
-let progressInterval = null
-let pollTimer = null
-const isGeneratingCancelled = ref(false)
-const timerHandles = { progressInterval: null, pollTimer: null }
+// Knowledge tree data
+const knowledgeTreeData = ref([])
+const loadingKnowledge = ref(false)
 
-// 配置表单
+// Options
+const categoryOptions = ref([])
+const loadingCategories = ref(false)
+const examTypeOptions = ref([])
+const loadingExamTypes = ref(false)
+
+const filteredExamTypeOptions = computed(() => {
+  if (!configForm.categoryId) return examTypeOptions.value
+  return examTypeOptions.value.filter(et => et.category_id === configForm.categoryId)
+})
+
+// Config form
 const configForm = reactive({
   categoryId: null,
   examTypeId: null,
   questionTypes: ['choice', 'multiple'],
-  generationMode: 'hybrid',  // hybrid / rule_only
+  generationMode: 'hybrid',
   quantity: 20,
   difficulty: 'mixed',
   difficultyRate: 50
 })
 
-// 题型映射：前端标签 → 后端枚举
+// Type map: frontend label -> backend enum
 const typeMap = {
   choice: 'single_choice',
   multiple: 'multiple_choice',
@@ -455,20 +464,69 @@ const typeMap = {
   short_answer: 'essay'
 }
 
-// 考试种类选项
-const categoryOptions = ref([])
-const loadingCategories = ref(false)
-
-// 考试科目选项
-const examTypeOptions = ref([])
-const loadingExamTypes = ref(false)
-
-// 计算属性：按考试种类筛选考试科目
-const filteredExamTypeOptions = computed(() => {
-  if (!configForm.categoryId) return examTypeOptions.value
-  return examTypeOptions.value.filter(et => et.category_id === configForm.categoryId)
+// Use generation composable
+const {
+  generating,
+  generationStatus,
+  currentTaskId,
+  progressPercentage,
+  progressStatus,
+  remainingTime,
+  startTime,
+  generatedQuestions,
+  failedQuestions,
+  historyTasks,
+  historyFilter,
+  logs,
+  logContainerRef,
+  statusText,
+  statusTagType,
+  filteredHistoryTasks: filteredTasks,
+  addLog,
+  clearLogs,
+  startGeneration: startGen,
+  cancelGeneration,
+  submitSelected,
+  retryFailedQuestions,
+  deleteQuestion: deleteQuestionAction,
+  deleteSelected: deleteSelectedAction,
+  viewTaskResult,
+  regenerateTask,
+} = useGeneration({
+  onQuestionsGenerated: () => {},
+  onGenerationFailed: (error) => {
+    console.error('Generation failed:', error)
+  },
+  onLog: () => {}
 })
 
+// Helper functions (used in template)
+const mapDifficultyNum = (num) => {
+  const map = { 1: 'easy', 2: 'easy', 3: 'medium', 4: 'hard', 5: 'hard' }
+  return map[num] || 'medium'
+}
+const getTypeName = (type) => ({ choice: '单选', multiple: '多选', judge: '判断', short_answer: '简答' }[type] || type)
+const getTypeTagType = (type) => ({ choice: '', multiple: 'success', judge: 'info', short_answer: 'warning' }[type] || 'info')
+const getDifficultyName = (diff) => ({ easy: '简单', medium: '中等', hard: '困难' }[diff] || diff)
+const getDifficultyTagType = (type) => ({ easy: 'success', medium: 'warning', hard: 'danger' }[type] || 'info')
+const getStatusText = (status) => ({ pending: '等待', running: '进行中', completed: '完成', failed: '失败' }[status] || status)
+const getStatusTagType = (status) => ({ pending: 'info', running: 'warning', completed: 'success', failed: 'danger' }[status] || 'info')
+const getProgressStatus = (status) => {
+  if (status === 'failed') return 'exception'
+  if (status === 'completed') return 'success'
+  return ''
+}
+const updateSelectedCount = () => {
+  const selected = generatedQuestions.value.filter((q) => q.selected).length
+  selectAll.value = selected === generatedQuestions.value.length
+}
+
+const selectAll = ref(false)
+watch(selectAll, (val) => {
+  generatedQuestions.value.forEach((q) => q.selected = val)
+})
+
+// Fetch categories
 const fetchCategories = async () => {
   loadingCategories.value = true
   try {
@@ -481,6 +539,7 @@ const fetchCategories = async () => {
   }
 }
 
+// Fetch exam types
 const fetchExamTypes = async () => {
   loadingExamTypes.value = true
   try {
@@ -493,16 +552,7 @@ const fetchExamTypes = async () => {
   }
 }
 
-const handleCategoryChange = () => {
-  configForm.examTypeId = null
-  fetchExamTypes()  // 加载考试科目列表
-  fetchKnowledgeTree()  // 加载知识点树（显示科目列表）
-}
-
-// 知识点树数据
-const knowledgeTreeData = ref([])
-const loadingKnowledge = ref(false)
-
+// Fetch knowledge tree
 const fetchKnowledgeTree = async () => {
   if (!configForm.categoryId) {
     knowledgeTreeData.value = []
@@ -517,10 +567,9 @@ const fetchKnowledgeTree = async () => {
     const res = await knowledgeAPI.getHierarchyTrees(params)
     const trees = res.data?.trees || []
 
-    // 如果选择了考试科目，直接显示该科目下的知识点
     if (configForm.examTypeId) {
       for (const cat of trees) {
-        const et = (cat.children || []).find(e => e.exam_type_id === configForm.examTypeId)
+        const et = (cat.children || []).find((e) => e.exam_type_id === configForm.examTypeId)
         if (et) {
           knowledgeTreeData.value = [{
             id: et.id,
@@ -534,7 +583,6 @@ const fetchKnowledgeTree = async () => {
       }
     }
 
-    // 没有选择考试科目时，只显示考试科目列表（不显示知识点）
     knowledgeTreeData.value = []
     for (const cat of trees) {
       for (const et of (cat.children || [])) {
@@ -543,7 +591,7 @@ const fetchKnowledgeTree = async () => {
           label: et.name,
           node_type: et.node_type,
           exam_type_id: et.exam_type_id,
-          children: null  // 不加载知识点，等待用户选择科目
+          children: null
         })
       }
     }
@@ -555,7 +603,7 @@ const fetchKnowledgeTree = async () => {
   }
 }
 
-// 将知识点 API 数据转为 el-tree 格式
+// Convert API tree to el-tree format
 const convertKpTree = (nodes) => {
   if (!nodes) return []
   return nodes.map(n => ({
@@ -565,106 +613,30 @@ const convertKpTree = (nodes) => {
   }))
 }
 
-// 监听科目变化，刷新知识点
+// Handle category change
+const handleCategoryChange = () => {
+  configForm.examTypeId = null
+  fetchExamTypes()
+  fetchKnowledgeTree()
+}
+
+// Listen for exam type changes
 watch(() => configForm.examTypeId, () => {
   fetchKnowledgeTree()
 })
 
-// 生成的题目
-const generatedQuestions = ref([])
-
-// 提交失败的题目（暂存）
-const failedQuestions = ref([])
-
-// 编辑中的题目
-const editingQuestion = reactive({
-  content: '',
-  type: 'choice',
-  difficulty: 'medium',
-  optionA: '',
-  optionB: '',
-  optionC: '',
-  optionD: '',
-  answer: ''
-})
-
-// 历史任务
-const historyTasks = ref([])
-
-// 计算属性
-const filteredHistoryTasks = computed(() => {
-  if (!historyFilter.value) return historyTasks.value
-  return historyTasks.value.filter(task => task.status === historyFilter.value)
-})
-
-const statusText = computed(() => {
-  const map = { pending: '等待中', running: '生成中', completed: '已完成', failed: '已失败' }
-  return map[generationStatus.value] || '等待中'
-})
-
-const statusTagType = computed(() => {
-  const map = { pending: 'info', running: 'warning', completed: 'success', failed: 'danger' }
-  return map[generationStatus.value] || 'info'
-})
-
-// 方法
-const getTypeName = (type) => {
-  const map = { choice: '单选', multiple: '多选', judge: '判断', short_answer: '简答' }
-  return map[type] || type
+// Start generation (wraps composable)
+const startGeneration = async () => {
+  await startGen(
+    configForm,
+    knowledgeTreeRef.value,
+    knowledgeTreeRef.value?.getCheckedNodes() || [],
+    examTypeOptions.value,
+    categoryOptions.value,
+  )
 }
 
-const getTypeTagType = (type) => {
-  const map = { choice: '', multiple: 'success', judge: 'info', short_answer: 'warning' }
-  return map[type] || 'info'
-}
-
-const getDifficultyName = (difficulty) => {
-  const map = { easy: '简单', medium: '中等', hard: '困难' }
-  return map[difficulty] || difficulty
-}
-
-const getDifficultyTagType = (difficulty) => {
-  const map = { easy: 'success', medium: 'warning', hard: 'danger' }
-  return map[difficulty] || 'info'
-}
-
-const getStatusText = (status) => {
-  const map = { pending: '等待', running: '进行中', completed: '完成', failed: '失败' }
-  return map[status] || status
-}
-
-const getStatusTagType = (status) => {
-  const map = { pending: 'info', running: 'warning', completed: 'success', failed: 'danger' }
-  return map[status] || 'info'
-}
-
-const getProgressStatus = (status) => {
-  if (status === 'failed') return 'exception'
-  if (status === 'completed') return 'success'
-  return ''
-}
-
-const updateSelectedCount = () => {
-  const selected = generatedQuestions.value.filter(q => q.selected).length
-  selectAll.value = selected === generatedQuestions.value.length
-}
-
-const addLog = (message, type = 'info') => {
-  const now = new Date()
-  const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-  logs.value.push({ time, message, type })
-
-  nextTick(() => {
-    if (logContainerRef.value) {
-      logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
-    }
-  })
-}
-
-const clearLogs = () => {
-  logs.value = []
-}
-
+// Reset config
 const resetConfig = () => {
   configForm.categoryId = categoryOptions.value.length > 0 ? categoryOptions.value[0].id : null
   configForm.examTypeId = null
@@ -675,518 +647,17 @@ const resetConfig = () => {
   ElMessage.success('配置已重置')
 }
 
-const startGeneration = async () => {
-  if (!configForm.categoryId) {
-    ElMessage.warning('请选择考试种类')
-    return
-  }
-  if (!configForm.examTypeId) {
-    ElMessage.warning('请选择考试科目')
-    return
-  }
-  if (configForm.questionTypes.length === 0) {
-    ElMessage.warning('请至少选择一种题型')
-    return
-  }
-
-  // 获取选中的知识点
-  const selectedKpNodes = knowledgeTreeRef.value?.getCheckedNodes() || []
-  if (selectedKpNodes.length === 0) {
-    ElMessage.warning('请至少选择一个知识点')
-    return
-  }
-
-  generating.value = true
-  generationStatus.value = 'running'
-  currentStep.value = 1
-  progressPercentage.value = 0
-  progressStatus.value = ''
-  generatedQuestions.value = []
-  clearLogs()
-  // 重置取消状态
-  isGeneratingCancelled.value = false
-  // 清理可能存在的旧定时器
-  if (timerHandles.progressInterval) {
-    clearInterval(timerHandles.progressInterval)
-    timerHandles.progressInterval = null
-  }
-  if (timerHandles.pollTimer) {
-    clearInterval(timerHandles.pollTimer)
-    timerHandles.pollTimer = null
-  }
-
-  const now = new Date()
-  currentTaskId.value = `TASK-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
-  startTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-  remainingTime.value = '计算中...'
-
-  addLog('任务已创建，正在准备知识点内容...', 'info')
-
-  // 收集选中的知识点ID（包含半选的父节点 + 全选的所有节点）
-  // getCheckedNodes(false, false) 返回所有勾选节点（含非叶子）
-  // 注意：category/exam_type 节点的 id 是字符串（如 "cat_SIFAJIANDU"），需要过滤掉
-  const selectedKpIds = selectedKpNodes.map(n => n.id).filter(id => typeof id === 'number')
-
-  // 如果没有数字ID，尝试从半选节点获取子节点ID
-  if (selectedKpIds.length === 0) {
-    const halfCheckedNodes = knowledgeTreeRef.value?.getHalfCheckedNodes() || []
-    // 从半选的父节点中收集子节点ID
-    const collectChildIds = (nodes) => {
-      for (const n of nodes) {
-        if (typeof n.id === 'number') selectedKpIds.push(n.id)
-        if (n.children) collectChildIds(n.children)
-      }
-    }
-    collectChildIds(halfCheckedNodes)
-  }
-
-  if (selectedKpIds.length === 0) {
-    generating.value = false
-    generationStatus.value = ''
-    ElMessage.error('未找到有效的知识点ID，请确保知识点数据已正确加载')
-    addLog('错误：选中的节点中没有有效的数字ID，请检查知识点树数据', 'error')
-    return
-  }
-
-  // 不再前端拼接 knowledge_content，由后端根据 knowledge_point_ids 从数据库查询完整描述
-  // 这样能获取到知识点的 description 等详细信息，AI 出题质量更高
-  const knowledgeContent = ''
-
-  addLog(`已选择 ${selectedKpIds.length} 个知识点，后端将查询知识点详情用于出题...`, 'info')
-
-  // 获取当前科目和种类名称
-  const currentCategory = categoryOptions.value.find(c => c.id === configForm.categoryId)
-  const currentExamType = examTypeOptions.value.find(e => e.id === configForm.examTypeId)
-  const subjectName = currentExamType?.name || currentCategory?.name || '通用'
-
-  // 难度映射: easy=2, medium=3, hard=4, mixed=3 (后按比例分配)
-  const difficultyMap = { easy: 2, medium: 3, hard: 4, mixed: 3 }
-  const baseDifficulty = difficultyMap[configForm.difficulty] || 3
-
-  try {
-    // 进度模拟（在等待响应期间）
-    // rule_only 模式秒级返回，不需要慢速模拟
-    const isRuleOnly = configForm.generationMode === 'rule_only'
-    let progress = isRuleOnly ? 60 : 0
-    let elapsedSeconds = 0
-    let progressUpdated = false  // 标记是否已收到后端进度
-    timerHandles.progressInterval = setInterval(() => {
-      // 检查是否已取消
-      if (isGeneratingCancelled.value) {
-        clearInterval(timerHandles.progressInterval)
-        return
-      }
-      // 一旦收到后端进度，就不再使用前端模拟进度
-      if (!progressUpdated) {
-        if (isRuleOnly) {
-          // 规则出题快速进度
-          progress = Math.min(progress + 10, 95)
-        } else {
-          progress += Math.random() * 3
-          if (progress > 95) progress = 95
-        }
-        progressPercentage.value = Math.round(progress)
-      }
-      elapsedSeconds++
-      // 显示已运行时间
-      remainingTime.value = `已运行 ${elapsedSeconds} 秒`
-      // 超时提示
-      if (!isRuleOnly) {
-        if (elapsedSeconds === 30) {
-          addLog('AI正在思考中，请耐心等待...', 'info')
-        } else if (elapsedSeconds === 60) {
-          addLog('AI响应较慢，可能因为知识点较多，继续等待...', 'warning')
-        } else if (elapsedSeconds === 120) {
-          addLog('等待时间较长，AI可能遇到网络问题，建议稍后重试', 'warning')
-        } else if (elapsedSeconds > 180 && elapsedSeconds % 60 === 0) {
-          addLog(`已等待 ${Math.floor(elapsedSeconds / 60)} 分钟，仍未收到响应`, 'warning')
-        }
-      }
-    }, isRuleOnly ? 200 : 1000)
-
-    const allQuestions = []
-    const mode = configForm.generationMode
-
-    // ── 混合出题模式：异步调用 + 轮询进度 ──
-    if (mode === 'hybrid' || mode === 'rule_only') {
-      const modeNames = { hybrid: '智能混合', rule_only: '规则出题' }
-      addLog(`使用${modeNames[mode]}模式生成题目...`, 'info')
-
-      // 混合出题支持多题型，前端勾选的题型转换为后端格式
-      const questionTypeList = configForm.questionTypes.map(t => typeMap[t] || 'single_choice')
-
-      // 从选中的知识点节点中获取 exam_type_id，优先使用它
-      // 注意：examTypeId 是考试科目ID，对应的 subject_id 才是题库系统使用的科目ID
-      const currentExamType = examTypeOptions.value.find(e => e.id === configForm.examTypeId)
-      let effectiveSubjectId = currentExamType?.subject_id || 1
-      const firstNodeWithExamType = selectedKpNodes.find(n => n.exam_type_id)
-      if (firstNodeWithExamType && firstNodeWithExamType.exam_type_id) {
-        // 知识点可能关联了不同的考试科目，需要获取对应的 subject_id
-        const kpExamType = examTypeOptions.value.find(e => e.id === firstNodeWithExamType.exam_type_id)
-        if (kpExamType?.subject_id) {
-          effectiveSubjectId = kpExamType.subject_id
-        }
-      }
-
-      const reqBody = {
-        subject_id: effectiveSubjectId,
-        subject_name: subjectName || '通用',
-        chapter_ids: [],
-        chapter_names: [],
-        question_types: questionTypeList,
-        difficulty: Number(baseDifficulty),
-        count: Math.max(1, Number(configForm.quantity)),
-        knowledge_point_ids: selectedKpIds.map(id => Number(id)).filter(id => !isNaN(id)),
-        mode: mode,
-      }
-
-      addLog(`请求参数：${questionTypeList.join('/')} × ${configForm.quantity}题，知识点ID ${reqBody.knowledge_point_ids.length} 个`, 'info')
-      console.log('[AI出题] 请求体:', JSON.stringify(reqBody, null, 2))
-
-      if (reqBody.knowledge_point_ids.length === 0) {
-        addLog('错误：知识点ID列表为空，请重新选择知识点', 'error')
-        clearInterval(timerHandles.progressInterval)
-        generating.value = false
-        generationStatus.value = 'failed'
-        progressPercentage.value = 0
-        progressStatus.value = 'exception'
-        remainingTime.value = '失败'
-        ElMessage.error('知识点ID为空，请确保知识点树数据正确加载后重试')
-        return
-      }
-
-      if (mode === 'hybrid') {
-        addLog('规则引擎正在分析知识点类型并制定出题策略...', 'info')
-      } else if (mode === 'rule_only') {
-        addLog('规则引擎正在快速生成题目...', 'info')
-      }
-
-      try {
-        // 1. 创建异步任务
-        const asyncRes = await adminAPI.hybridGenerateAsync(reqBody)
-        const taskId = asyncRes.data?.task_id
-        if (!taskId) {
-          throw new Error('创建出题任务失败：未返回任务ID')
-        }
-        addLog(`出题任务已创建 (ID: ${taskId})，正在后台执行...`, 'info')
-        currentTaskId.value = `TASK-${taskId}`
-
-        // 2. 轮询任务进度
-        // rule_only 模式轮询间隔更短（预期秒级完成）
-        const pollInterval = isRuleOnly ? 500 : 2000
-        let pollCount = 0
-        const maxPolls = 180 // 最多轮询180次（rule_only: 90秒, AI: 360秒）
-
-        const pollTask = async () => {
-          return new Promise((resolve, reject) => {
-            timerHandles.pollTimer = setInterval(async () => {
-              // 检查是否已取消
-              if (isGeneratingCancelled.value) {
-                clearInterval(timerHandles.pollTimer)
-                clearInterval(timerHandles.progressInterval)
-                reject(new Error('用户取消'))
-                return
-              }
-              pollCount++
-              try {
-                const progressRes = await adminAPI.getTaskProgress(taskId)
-                const taskData = progressRes.data
-
-                // 更新进度条（使用后端真实进度）
-                progressUpdated = true  // 标记已收到后端进度，不再使用模拟值
-                progressPercentage.value = taskData.progress
-                // 继续显示已运行时间，不受后端进度波动影响
-
-                if (taskData.status === 'completed') {
-                  clearInterval(timerHandles.pollTimer)
-                  clearInterval(timerHandles.progressInterval)
-                  progressPercentage.value = 100  // 确保进度到100%
-                  try {
-                    const questions = taskData.questions || []
-                    addLog(`出题完成：规则 ${taskData.rule_questions} 题 + AI ${taskData.ai_questions} 题 = ${questions.length} 题`,
-                           questions.length < configForm.quantity ? 'warning' : 'success')
-
-                    // 转换题目格式
-                    for (let idx = 0; idx < questions.length; idx++) {
-                      const q = questions[idx]
-                      try {
-                        const frontType = Object.keys(typeMap).find(k => typeMap[k] === q.question_type) || 'choice'
-                        allQuestions.push({
-                          id: `Q-${Date.now()}-${idx}`,
-                          type: frontType,
-                          difficulty: mapDifficultyNum(q.difficulty),
-                          content: q.content || '',
-                          selected: false,
-                          options: q.options ? q.options.map(o => (typeof o === 'string' ? o : (o.option_content || o.option_label || ''))) : null,
-                          answer: q.answer || '',
-                          explanation: q.explanation || '',
-                          knowledgePoints: selectedKpNodes.map(n => n.label),
-                          _raw: q,
-                          _questionType: q.question_type || typeMap[frontType],
-                          _difficultyNum: q.difficulty || baseDifficulty,
-                          _knowledgePointIds: selectedKpIds,
-                        })
-                      } catch (convertErr) {
-                        console.error(`题目 ${idx + 1} 格式转换失败:`, convertErr, q)
-                        addLog(`题目 ${idx + 1} 格式转换失败，已跳过`, 'warning')
-                      }
-                    }
-                  } catch (processErr) {
-                    console.error('[AI出题] 处理完成结果失败:', processErr)
-                  }
-                  // 无论处理是否出错，都 resolve 让流程继续
-                  resolve()
-                } else if (taskData.status === 'failed') {
-                  clearInterval(timerHandles.pollTimer)
-                  clearInterval(timerHandles.progressInterval)
-                  addLog(`出题失败: ${taskData.error_message || '未知错误'}`, 'error')
-                  reject(new Error(taskData.error_message || '出题失败'))
-                } else if (pollCount >= maxPolls) {
-                  clearInterval(timerHandles.pollTimer)
-                  clearInterval(timerHandles.progressInterval)
-                  addLog('轮询超时，任务可能仍在后台执行', 'warning')
-                  reject(new Error('轮询超时'))
-                }
-                // running/pending: 继续轮询
-              } catch (pollErr) {
-                console.error('[AI出题] 轮询失败:', pollErr)
-                // 轮询失败不立即放弃，继续尝试
-                if (pollCount >= maxPolls) {
-                  clearInterval(timerHandles.pollTimer)
-                  clearInterval(timerHandles.progressInterval)
-                  reject(pollErr)
-                }
-              }
-            }, pollInterval)
-          })
-        }
-
-        await pollTask()
-      } catch (apiErr) {
-        console.error('[AI出题] API调用失败:', apiErr)
-        clearInterval(timerHandles.progressInterval)
-        const errMsg = apiErr.message || '未知错误'
-        addLog(`出题失败: ${errMsg}`, 'error')
-      }
-    }
-
-    clearInterval(timerHandles.progressInterval)
-
-    if (allQuestions.length > 0) {
-      progressPercentage.value = 100
-      progressStatus.value = 'success'
-      generationStatus.value = 'completed'
-      currentStep.value = 2
-      remainingTime.value = '已完成'
-      generatedQuestions.value = allQuestions
-      const actualCount = allQuestions.length
-      const targetCount = configForm.quantity
-      if (actualCount < targetCount) {
-        addLog(`题目生成完成！共 ${actualCount} 题（目标 ${targetCount} 题，缺少 ${targetCount - actualCount} 题）`, 'warning')
-      } else {
-        addLog(`所有题目生成完成！共 ${actualCount} 题`, 'success')
-      }
-
-      // 加入历史记录
-      historyTasks.value.unshift({
-        id: currentTaskId.value,
-        createdAt: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`,
-        config: { subject: subjectName, quantity: allQuestions.length },
-        status: 'completed',
-        progress: 100,
-        resultCount: allQuestions.length
-      })
-    } else {
-      progressPercentage.value = 0
-      progressStatus.value = 'exception'
-      generationStatus.value = 'failed'
-      addLog('AI生成失败，请检查网络或配置后重试', 'error')
-    }
-  } catch (e) {
-    progressPercentage.value = 0
-    progressStatus.value = 'exception'
-    generationStatus.value = 'failed'
-    const errMsg = e.response?.data?.detail
-      ? (Array.isArray(e.response.data.detail)
-          ? e.response.data.detail.map(d => `${d.loc?.join('.')}: ${d.msg}`).join('; ')
-          : String(e.response.data.detail))
-      : e.message || '未知错误'
-    addLog(`生成出错: ${errMsg}`, 'error')
-    console.error('AI出题失败:', e)
-  } finally {
-    generating.value = false
-  }
-}
-
-// 取消生成
-const cancelGeneration = () => {
-  isGeneratingCancelled.value = true
-  if (timerHandles.progressInterval) {
-    clearInterval(timerHandles.progressInterval)
-    timerHandles.progressInterval = null
-  }
-  if (timerHandles.pollTimer) {
-    clearInterval(timerHandles.pollTimer)
-    timerHandles.pollTimer = null
-  }
-  // 直接关闭进度区
-  generating.value = false
-  generationStatus.value = ''
-  progressPercentage.value = 0
-  progressStatus.value = ''
-  remainingTime.value = ''
-  addLog('已取消生成', 'warning')
-}
-
-// 难度数字→前端标签映射
-const mapDifficultyNum = (num) => {
-  const map = { 1: 'easy', 2: 'easy', 3: 'medium', 4: 'hard', 5: 'hard' }
-  return map[num] || 'medium'
-}
-
-const submitSelected = async () => {
-  const selected = generatedQuestions.value.filter(q => q.selected)
-  if (selected.length === 0) {
-    ElMessage.warning('请先选择要提交的题目')
-    return
-  }
-
-  const loading = ElMessage({ message: '正在提交题目到审核队列...', type: 'info', duration: 0 })
-
-  let successCount = 0
-  let failCount = 0
-
-  for (const q of selected) {
-    try {
-      // 构建选项数据
-      let options = null
-      if (q.options && (q.type === 'choice' || q.type === 'multiple')) {
-        const labels = ['A', 'B', 'C', 'D']
-        const correctAnswer = q.answer || ''
-        options = q.options.map((optContent, idx) => ({
-          option_label: labels[idx] || String(idx + 1),
-          option_content: optContent,
-          is_correct: correctAnswer.includes(labels[idx]),
-          order: idx
-        }))
-      }
-
-      const payload = {
-        chapter_id: 1,  // 默认章节，AI生成题目无固定章节
-        subject_id: q._raw?.subject_id || 1,
-        question_type: q._questionType || typeMap[q.type] || 'single_choice',
-        content: q.content,
-        answer: q.answer,
-        explanation: q.explanation,
-        difficulty: q._difficultyNum || 3,
-        score: q.type === 'short_answer' ? 10 : 5,
-        is_public: false,
-        tags: { knowledge_points: q.knowledgePoints || [], source: 'ai_generated' },
-        meta: { knowledge_point_ids: q._knowledgePointIds || [] },
-        status: 1,
-        source: 'ai',
-        is_ai_generated: true,
-        options: options,
-      }
-
-      await adminAPI.createQuestion(payload)
-      successCount++
-    } catch (e) {
-      console.error('提交题目失败:', e)
-      // 保存失败的题目，带上错误信息
-      failedQuestions.value.push({
-        ...q,
-        _error: e.message || '提交失败',
-        _failedAt: new Date().toLocaleString()
-      })
-      failCount++
-    }
-  }
-
-  loading.close()
-
-  if (successCount > 0) {
-    ElMessage.success(`已提交 ${successCount} 道题目到审核队列${failCount > 0 ? `，${failCount} 道提交失败（已暂存）` : ''}`)
-    // 从列表中移除已提交的题目
-    generatedQuestions.value = generatedQuestions.value.filter(q => !q.selected)
-  } else {
-    ElMessage.error('提交失败，请修复问题后重试暂存的题目')
-  }
-}
-
-// 重试提交失败的题目
-const retryFailedQuestions = async () => {
-  if (failedQuestions.value.length === 0) {
-    ElMessage.warning('没有待重试的题目')
-    return
-  }
-
-  const loading = ElMessage({ message: '正在重试提交...', type: 'info', duration: 0 })
-  let successCount = 0
-  const stillFailed = []
-
-  for (const q of failedQuestions.value) {
-    try {
-      let options = null
-      if (q.options && (q.type === 'choice' || q.type === 'multiple')) {
-        const labels = ['A', 'B', 'C', 'D']
-        const correctAnswer = q.answer || ''
-        options = q.options.map((optContent, idx) => ({
-          option_label: labels[idx] || String(idx + 1),
-          option_content: optContent,
-          is_correct: correctAnswer.includes(labels[idx]),
-          order: idx
-        }))
-      }
-
-      const payload = {
-        chapter_id: 1,
-        subject_id: q._raw?.subject_id || 1,
-        question_type: q._questionType || typeMap[q.type] || 'single_choice',
-        content: q.content,
-        answer: q.answer,
-        explanation: q.explanation,
-        difficulty: q._difficultyNum || 3,
-        score: q.type === 'short_answer' ? 10 : 5,
-        is_public: false,
-        tags: { knowledge_points: q.knowledgePoints || [], source: 'ai_generated' },
-        meta: { knowledge_point_ids: q._knowledgePointIds || [] },
-        status: 1,
-        options: options,
-      }
-
-      await adminAPI.createQuestion(payload)
-      successCount++
-    } catch (e) {
-      console.error('重试提交题目失败:', e)
-      stillFailed.push({
-        ...q,
-        _error: e.message || '提交失败',
-        _failedAt: new Date().toLocaleString()
-      })
-    }
-  }
-
-  failedQuestions.value = stillFailed
-  loading.close()
-
-  if (successCount > 0) {
-    ElMessage.success(`重试成功 ${successCount} 道题目${stillFailed.length > 0 ? `，${stillFailed.length} 道仍失败` : ''}`)
-  } else {
-    ElMessage.error('重试全部失败，请检查问题')
-  }
-}
-
-// 移除失败的题目
-const removeFailedQuestion = (index) => {
-  failedQuestions.value.splice(index, 1)
-}
-
-// 清空所有失败题目
+// Clear failed questions
 const clearFailedQuestions = () => {
   failedQuestions.value = []
 }
 
+// Remove a failed question by index
+const removeFailedQuestion = (index) => {
+  failedQuestions.value.splice(index, 1)
+}
+
+// Edit selected question
 const editSelected = () => {
   const selected = generatedQuestions.value.filter(q => q.selected)
   if (selected.length === 0) {
@@ -1197,14 +668,9 @@ const editSelected = () => {
     ElMessage.warning('请只选择一道题目进行编辑')
     return
   }
-
   const index = generatedQuestions.value.findIndex(q => q.selected)
-  editQuestion(index)
-}
-
-const editQuestion = (index) => {
-  const question = generatedQuestions.value[index]
   editingQuestionIndex.value = index
+  const question = generatedQuestions.value[index]
   Object.assign(editingQuestion, {
     content: question.content,
     type: question.type,
@@ -1218,6 +684,7 @@ const editQuestion = (index) => {
   editDialogVisible.value = true
 }
 
+// Save edited question
 const saveEditedQuestion = () => {
   const question = generatedQuestions.value[editingQuestionIndex.value]
   question.content = editingQuestion.content
@@ -1233,6 +700,7 @@ const saveEditedQuestion = () => {
   ElMessage.success('题目已保存')
 }
 
+// Delete a single question
 const deleteQuestion = (index) => {
   ElMessageBox.confirm('确定要删除这道题目吗？', '提示', { type: 'warning' })
     .then(() => {
@@ -1242,6 +710,7 @@ const deleteQuestion = (index) => {
     .catch(() => {})
 }
 
+// Delete selected questions
 const deleteSelected = () => {
   const selected = generatedQuestions.value.filter(q => q.selected)
   if (selected.length === 0) {
@@ -1257,36 +726,7 @@ const deleteSelected = () => {
     .catch(() => {})
 }
 
-const viewTaskResult = (task) => {
-  ElMessage.info(`查看任务 ${task.id} 的结果`)
-}
-
-const regenerateTask = (task) => {
-  ElMessageBox.confirm(`确定要重新生成任务 ${task.id} 吗？`, '提示', { type: 'info' })
-    .then(() => {
-      task.status = 'running'
-      task.progress = 0
-      generationStatus.value = 'running'
-      generating.value = true
-      currentStep.value = 1
-      addLog(`重新生成任务 ${task.id}...`, 'info')
-
-      setTimeout(() => {
-        task.status = 'completed'
-        task.progress = 100
-        generationStatus.value = 'completed'
-        generating.value = false
-        currentStep.value = 2
-        addLog('重新生成完成！', 'success')
-      }, 3000)
-    })
-    .catch(() => {})
-}
-
-watch(selectAll, (val) => {
-  generatedQuestions.value.forEach(q => q.selected = val)
-})
-
+// Initialize
 onMounted(() => {
   currentStep.value = 0
   fetchCategories()
@@ -1308,151 +748,80 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.steps-indicator :deep(.el-step__title) {
-  font-size: 14px;
-}
-
-.steps-indicator :deep(.el-step__description) {
-  font-size: 12px;
-}
-
-/* 主内容区 */
 .main-content {
-  min-height: calc(100vh - 200px);
+  padding: 0 4px;
 }
 
-/* 配置卡片 */
-.config-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  position: sticky;
-  top: 20px;
-}
-
+/* 配置面板 */
 .config-col {
   transition: all 0.3s ease;
 }
 
-.expand-btn {
-  background: #ffffff;
+.config-card {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  padding: 40px 20px;
-  link-align: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-bottom: 16px;
 }
 
-.expand-btn:hover {
-  background: #f9fafb;
-}
-
-.expand-btn span {
-  display: block;
-  margin-top: 8px;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.progress-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-/* 配置表单 */
 .config-form {
-  padding: 0 4px;
+  padding: 20px 0;
 }
 
-.config-form :deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #374151;
+:deep(.config-form .el-form-item) {
+  margin-bottom: 22px;
 }
 
-.required-mark {
-  color: #F53F3F;
-  margin-right: 2px;
+.question-types-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
 }
 
-.knowledge-hint {
-  color: #F53F3F;
-  font-size: 13px;
-  link-align: center;
-  padding: 8px;
-  border: 1px dashed #f56c6c;
-  border-radius: 4px;
-  background: #fff1f0;
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
 }
 
-/* 出题模式 */
+.form-actions .el-button {
+  flex: 1;
+}
+
 .mode-radio-wrapper {
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .mode-radio-group {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.mode-radio-group :deep(.el-radio) {
-  display: flex;
-  align-items: center;
-  height: auto;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s;
-  margin-right: 0;
-}
-
-.mode-radio-group :deep(.el-radio.is-checked) {
-  border-color: #165DFF;
-  background: #f0f5ff;
+  gap: 16px;
 }
 
 .mode-desc {
-  font-size: 11px;
-  color: #9ca3af;
-  margin-left: 4px;
+  display: inline;
+  font-size: 12px;
+  color: #6b7280;
+  margin-left: 6px;
 }
 
-/* 难度等级 */
 .difficulty-form-item {
-  position: relative;
+  :deep(.el-form-item__content) {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .difficulty-layout {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 16px;
-  flex-wrap: wrap;
+  width: 100%;
 }
 
 .difficulty-radio-group {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.difficulty-radio-group :deep(.el-radio) {
-  margin-right: 0;
-  padding: 6px 12px;
+  gap: 16px;
 }
 
 .mixed-wrapper {
@@ -1462,52 +831,59 @@ onMounted(() => {
 }
 
 .mixed-radio {
-  margin-right: 0;
+  margin-right: 8px;
 }
 
 .difficulty-rate {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: #6b7280;
-  padding: 6px 12px;
-  background: #f9fafb;
+  gap: 12px;
+  flex: 1;
+}
+
+.difficulty-rate .el-slider {
+  flex: 1;
+}
+
+.knowledge-hint {
+  padding: 12px 16px;
+  background: #f5f7fa;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  text-align: center;
+  font-size: 14px;
 }
 
-.difficulty-rate :deep(.el-slider) {
-  flex: 1;
-  min-width: 120px;
-  max-width: 160px;
-}
-
-/* 过渡动画 */
-.slider-fade-enter-active,
-.slider-fade-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.slider-fade-enter-from,
-.slider-fade-leave-to {
-  opacity: 0;
-  transform: translateX(-10px);
-}
-
-.form-actions {
+.expand-btn {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px;
+  margin-top: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  color: #165DFF;
+  font-size: 14px;
+  transition: all 0.2s ease;
 }
 
-.form-actions :deep(.el-button) {
-  flex: 1;
+.expand-btn:hover {
+  background: #f5f9ff;
+}
+
+/* 预览区 */
+.preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* 进度区 */
 .progress-section {
-  margin-bottom: 20px;
+  animation: fadeIn 0.3s ease;
 }
 
 .progress-card {
@@ -1516,19 +892,20 @@ onMounted(() => {
 }
 
 .progress-content {
-  padding: 0 4px;
+  padding: 8px 0;
 }
 
 .progress-info {
   display: flex;
-  gap: 24px;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 20px;
-  flex-wrap: wrap;
 }
 
 .progress-item {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .progress-item .label {
@@ -1542,9 +919,8 @@ onMounted(() => {
   font-weight: 500;
 }
 
-/* 日志容器 */
 .log-container {
-  margin-top: 20px;
+  margin-top: 24px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
@@ -1554,53 +930,57 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 10px 16px;
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #374151;
 }
 
 .log-content {
-  height: 160px;
+  max-height: 200px;
   overflow-y: auto;
-  padding: 12px;
-  background: #fefefe;
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
+  padding: 12px 16px;
+  background: #1f2937;
 }
 
 .log-item {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   padding: 4px 0;
-  color: #374151;
-}
-
-.log-item.success {
-  color: #00B42A;
-}
-
-.log-item.warning {
-  color: #FF7D00;
-}
-
-.log-item.error {
-  color: #F53F3F;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .log-time {
-  color: #9ca3af;
+  color: #6b7280;
+  font-family: monospace;
   flex-shrink: 0;
 }
 
 .log-message {
-  flex: 1;
+  color: #e5e7eb;
+}
+
+.log-item.info .log-message {
+  color: #e5e7eb;
+}
+
+.log-item.warning .log-message {
+  color: #fbbf24;
+}
+
+.log-item.error .log-message {
+  color: #f87171;
+}
+
+.log-item.success .log-message {
+  color: #34d399;
 }
 
 .log-empty {
-  link-align: center;
+  text-align: center;
   color: #9ca3af;
   padding: 40px 0;
 }
@@ -1693,7 +1073,7 @@ onMounted(() => {
 
 /* 空状态 */
 .empty-state {
-  link-align: center;
+  text-align: center;
   padding: 40px 20px;
 }
 
@@ -1798,41 +1178,39 @@ onMounted(() => {
   margin-right: 8px;
 }
 
-/* 历史记录卡片 */
+/* 历史任务 */
 .history-card {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header .title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* 响应式 */
-@media (max-width: 768px) {
-  .steps-indicator {
-    padding: 16px;
-  }
-
-  .steps-indicator :deep(.el-step__title) {
-    font-size: 12px;
-  }
-
-  .steps-indicator :deep(.el-step__description) {
-    display: none;
-  }
-
-  .config-card {
-    position: static;
-  }
-
-  .progress-info {
-    flex-direction: column;
-    gap: 10px;
-  }
-
+@media (max-width: 992px) {
   .question-options {
     grid-template-columns: 1fr;
-  }
-
-  .header-actions {
-    flex-wrap: wrap;
   }
 }
 </style>

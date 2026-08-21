@@ -38,61 +38,73 @@ const routes = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/admin/DashboardView.vue'),
-        meta: { title: '控制台', icon: 'Odometer' }
+        meta: { title: '控制台', icon: 'Odometer', permission: null }
       },
       {
         path: 'ai-question',
         name: 'AIQuestion',
         component: () => import('@/views/admin/AIQuestionView.vue'),
-        meta: { title: 'AI出题', icon: 'MagicStick' }
+        meta: { title: 'AI出题', icon: 'MagicStick', permission: 'ai-question' }
       },
       {
         path: 'audit',
         name: 'Audit',
         component: () => import('@/views/admin/AuditView.vue'),
-        meta: { title: '试题审核', icon: 'CircleCheck' }
+        meta: { title: '试题审核', icon: 'CircleCheck', permission: 'audit' }
       },
       {
         path: 'auto-paper',
         name: 'AutoPaper',
         component: () => import('@/views/admin/AutoPaperView.vue'),
-        meta: { title: '智能组卷', icon: 'DocumentCopy' }
+        meta: { title: '智能组卷', icon: 'DocumentCopy', permission: 'auto-paper' }
       },
       {
         path: 'question-bank',
         name: 'QuestionBank',
         component: () => import('@/views/admin/QuestionBankView.vue'),
-        meta: { title: '题库管理', icon: 'Collection' }
+        meta: { title: '题库管理', icon: 'Collection', permission: 'question-bank' }
       },
       {
         path: 'paper-management',
         name: 'PaperManagement',
         component: () => import('@/views/admin/PaperManagementView.vue'),
-        meta: { title: '试卷管理', icon: 'Document' }
+        meta: { title: '试卷管理', icon: 'Document', permission: 'paper-management' }
+      },
+      {
+        path: 'template-market',
+        name: 'TemplateMarket',
+        component: () => import('@/views/admin/TemplateMarketView.vue'),
+        meta: { title: '模板市场', icon: 'Goods', permission: 'template-market' }
       },
       {
         path: 'knowledge',
         name: 'Knowledge',
         component: () => import('@/views/admin/KnowledgeView.vue'),
-        meta: { title: '知识点管理', icon: 'Connection' }
+        meta: { title: '知识点管理', icon: 'Connection', permission: 'knowledge' }
+      },
+      {
+        path: 'knowledge-bases',
+        name: 'KnowledgeBases',
+        component: () => import('@/views/admin/KnowledgeBaseView.vue'),
+        meta: { title: '知识库管理', icon: 'FolderOpened', permission: 'knowledge-bases' }
       },
       {
         path: 'knowledge/batch',
         name: 'BatchKnowledge',
         component: () => import('@/views/admin/BatchKnowledgeView.vue'),
-        meta: { title: '批量导入', icon: 'Upload' }
+        meta: { title: '批量导入', icon: 'Upload', permission: 'knowledge' }
       },
       {
         path: 'user-permission',
         name: 'UserPermission',
         component: () => import('@/views/admin/UserPermissionView.vue'),
-        meta: { title: '用户权限', icon: 'Key' }
+        meta: { title: '用户权限', icon: 'Key', permission: 'user-permission' }
       },
       {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/admin/SystemSettingsView.vue'),
-        meta: { title: '系统设置', icon: 'Setting' }
+        meta: { title: '系统设置', icon: 'Setting', permission: 'settings' }
       }
     ]
   }
@@ -112,8 +124,8 @@ router.beforeEach((to, from, next) => {
 
   const authStore = useAuthStore()
 
-  // 登录页直接放行
-  if (to.path === '/login') {
+  // 登录/注册页直接放行
+  if (to.path === '/login' || to.path === '/register') {
     next()
     return
   }
@@ -132,6 +144,13 @@ router.beforeEach((to, from, next) => {
       || (Array.isArray(permissions) && permissions.length === 0)
       || (typeof permissions === 'object' && Object.keys(permissions).length === 0)
     if (to.path !== '/no-permission' && isNoPermissions) {
+      next({ name: 'NoPermission' })
+      return
+    }
+
+    // 评估 P0-7 修复：逐路由校验所需菜单权限（此前只判断"有无任何权限"，
+    // 导致仅拥有 audit 权限的用户可 URL 直达 /settings、/user-permission 等）
+    if (to.meta.permission && !authStore.hasPermission(to.meta.permission)) {
       next({ name: 'NoPermission' })
       return
     }

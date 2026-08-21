@@ -74,9 +74,17 @@
           </span>
           <template #title>试卷管理</template>
         </el-menu-item>
+        <el-menu-item v-if="hasPermission('template-market')" index="/template-market">
+          <el-icon><Goods /></el-icon>
+          <template #title>模板市场</template>
+        </el-menu-item>
         <el-menu-item v-if="hasPermission('knowledge')" index="/knowledge">
           <el-icon><Connection /></el-icon>
           <template #title>知识点管理</template>
+        </el-menu-item>
+        <el-menu-item v-if="hasPermission('knowledge-bases')" index="/knowledge-bases">
+          <el-icon><FolderOpened /></el-icon>
+          <template #title>知识库管理</template>
         </el-menu-item>
         <el-menu-item v-if="hasPermission('user-permission')" index="/user-permission">
           <el-icon><Key /></el-icon>
@@ -221,7 +229,7 @@ import {
   Collection, Connection, Setting, Bell, Moon, Sunny,
   UserFilled, ArrowDown, Search, DArrowLeft, DArrowRight,
   User, SwitchButton, School, Clock, InfoFilled, WarningFilled,
-  Key
+  Key, FolderOpened, Goods
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -246,37 +254,22 @@ const currentRoute = computed(() => {
     '/auto-paper': '智能组卷',
     '/question-bank': '题库管理',
     '/paper-management': '试卷管理',
+    '/template-market': '模板市场',
     '/knowledge': '知识点管理',
+    '/knowledge/batch': '批量导入',
+    '/knowledge-bases': '知识库管理',
+    '/user-permission': '用户权限',
     '/settings': '系统设置'
   }
   return routeMap[route.path]
 })
 
-// 基于角色的权限配置（默认值）
-// role=1: 管理员 - 全部功能
-// role=2: 题库编辑 - 部分管理功能
-// role=3: 审核员 - 受限功能
-const roleDefaultPermissions = {
-  1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge', 'settings', 'user-permission'],
-  2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge'],
-  3: ['audit', 'question-bank']
-}
-
-const hasPermission = (feature) => {
-  const userRole = authStore.user?.role || 3
-  // 用户权限配置
-  const userPerms = authStore.user?.menu_permissions
-  // 如果有用户个性化权限配置，使用它
-  if (userPerms && typeof userPerms === 'object' && Object.keys(userPerms).length > 0) {
-    const rolePerms = userPerms[userRole]
-    if (rolePerms && Array.isArray(rolePerms)) {
-      return rolePerms.includes(feature)
-    }
-  }
-  // 如果没有个性化权限配置，不回退到角色默认权限（安全策略）
-  // 无权限用户应该看到空白页面或无权限提示
-  return false
-}
+// 权限判断统一委托给 authStore.hasPermission（评估 P0-7 修复）：
+// - 含管理员（role=1）全权限豁免
+// - 含角色默认权限回退
+// 此前本地实现既无管理员豁免、也无默认回退，导致管理员菜单只剩"控制台"、
+// 且与页面内 authStore.hasPermission 结果不一致。
+const hasPermission = (feature) => authStore.hasPermission(feature)
 
 const getRoleName = (role) => {
   const names = { 1: '管理员', 2: '题库编辑', 3: '审核员' }

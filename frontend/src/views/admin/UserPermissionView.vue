@@ -360,367 +360,59 @@ import {
   Odometer, MagicStick, CircleCheck, DocumentCopy,
   Collection, Connection, Document, User, UserFilled, School, Delete
 } from '@element-plus/icons-vue'
+import { useUserPermission } from '@/composables/useUserPermission'
 
-const loading = ref(false)
-const saving = ref(false)
-const deleteLoading = ref(false)
-const allUsers = ref([])
-const searchQuery = ref('')
-const filterRole = ref(null)
-const selectedUser = ref(null)
-const customEnabled = ref(false)
-const selectAll = ref(false)
-
-// 角色选项
-const roleOptions = [
-  { value: 1, label: '管理员', icon: 'UserFilled', bg: 'linear-gradient(135deg, #165DFF 0%, #3B82F6 100%)' },
-  { value: 2, label: '题库编辑', icon: 'School', bg: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)' },
-  { value: 3, label: '审核员', icon: 'User', bg: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)' }
-]
-
-// 权限模块配置
-const permissionModules = [
-  { key: 'dashboard', name: '控制台', description: '系统仪表盘和数据概览', icon: 'Odometer' },
-  { key: 'ai-question', name: 'AI出题', description: '使用AI生成试题', icon: 'MagicStick' },
-  { key: 'audit', name: '试题审核', description: '审核和管理试题', icon: 'CircleCheck' },
-  { key: 'auto-paper', name: '智能组卷', description: '自动生成试卷', icon: 'DocumentCopy' },
-  { key: 'question-bank', name: '题库管理', description: '管理题库资源', icon: 'Collection' },
-  { key: 'paper-management', name: '试卷管理', description: '管理试卷文件', icon: 'Document' },
-  { key: 'knowledge', name: '知识点管理', description: '管理知识点结构', icon: 'Connection' },
-  { key: 'settings', name: '系统设置', description: '系统配置和管理', icon: 'Setting' }
-]
-
-// 角色默认权限
-const roleDefaultPermissions = {
-  1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge', 'settings', 'user-permission'],
-  2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge'],
-  3: ['audit', 'question-bank']
-}
-
-// 批量设置弹窗
-const batchDialogVisible = ref(false)
-const batchForm = reactive({
-  role: null,
-  template: 1,
-  permissions: []
-})
-
-// 计算属性
-const filteredUsers = computed(() => {
-  return allUsers.value.filter(user => {
-    const matchSearch = !searchQuery.value ||
-      user.username.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchRole = !filterRole.value || user.role === filterRole.value
-    return matchSearch && matchRole
-  })
-})
-
-// 有效权限（根据是否启用自定义权限计算）
-const effectivePermissions = computed(() => {
-  if (!selectedUser.value) return []
-  const role = selectedUser.value.role
-  // 如果启用了自定义权限或有个性化权限设置，使用自定义权限
-  if (customEnabled.value && selectedUser.value.custom_permissions) {
-    return selectedUser.value.custom_permissions
-  }
-  // 否则使用角色默认权限
-  return roleDefaultPermissions[role] || []
-})
-
-const isIndeterminate = computed(() => {
-  if (!selectedUser.value?.custom_permissions) return false
-  const permCount = selectedUser.value.custom_permissions.length
-  return permCount > 0 && permCount < permissionModules.length
-})
-
-// 用户统计
-const userCountByRole = (role) => {
-  return allUsers.value.filter(u => u.role === role).length
-}
-
-// 权限判断
-const hasCustomPermissions = (user) => {
-  return user.custom_permissions && user.custom_permissions.length > 0
-}
-
-const isGranted = (key) => {
-  if (!selectedUser.value) return false
-  // 如果启用了个性化权限，使用自定义权限
-  if (customEnabled.value) {
-    return selectedUser.value.custom_permissions?.includes(key) || false
-  }
-  // 否则使用角色默认权限
-  return roleDefaultPermissions[selectedUser.value.role]?.includes(key) || false
-}
-
-const isInherited = (key) => {
-  return roleDefaultPermissions[selectedUser.value?.role]?.includes(key) || false
-}
-
-const isCustom = (key) => {
-  return selectedUser.value?.custom_permissions?.includes(key) || false
-}
-
-// 方法
-const getRoleName = (role) => {
-  const names = { 1: '管理员', 2: '题库编辑', 3: '审核员' }
-  return names[role] || '未知'
-}
-
-const getAvatarBg = (role) => {
-  const bgs = {
-    1: 'linear-gradient(135deg, #165DFF 0%, #3B82F6 100%)',
-    2: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
-    3: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)'
-  }
-  return bgs[role] || bgs[3]
-}
-
-const getPermBg = (key) => {
-  const colors = {
-    'dashboard': 'rgba(22, 93, 255, 0.1)',
-    'ai-question': 'rgba(139, 92, 246, 0.1)',
-    'audit': 'rgba(16, 185, 129, 0.1)',
-    'auto-paper': 'rgba(245, 158, 11, 0.1)',
-    'question-bank': 'rgba(6, 182, 212, 0.1)',
-    'paper-management': 'rgba(239, 68, 68, 0.1)',
-    'knowledge': 'rgba(14, 165, 233, 0.1)',
-    'settings': 'rgba(107, 114, 128, 0.1)'
-  }
-  return colors[key] || 'rgba(107, 114, 128, 0.1)'
-}
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN')
-}
-
-const formatTimeAgo = (dateStr) => {
-  if (!dateStr) return '从未登录'
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diff = Math.floor((now - date) / 1000)
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-  if (diff < 604800) return `${Math.floor(diff / 86400)}天前`
-  return formatDate(dateStr)
-}
-
-// 加载用户数据
-const loadUsers = async () => {
-  loading.value = true
-  try {
-    const res = await systemAPI.getUsers()
-    // axios response: res.data contains the actual response body
-    allUsers.value = res.data?.items || res.data || []
-  } catch (err) {
-    console.error('加载用户失败:', err)
-    ElMessage.error('加载用户列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 选择用户
-const selectUser = (user) => {
-  selectedUser.value = { ...user }
-  customEnabled.value = hasCustomPermissions(user)
-  updateSelectAll()
-}
-
-// 切换个性化权限
-const handleCustomToggle = (enabled) => {
-  if (enabled) {
-    // 启用时，初始化自定义权限为当前生效的权限
-    if (!selectedUser.value.custom_permissions || selectedUser.value.custom_permissions.length === 0) {
-      // 使用角色默认权限初始化
-      selectedUser.value.custom_permissions = [...(roleDefaultPermissions[selectedUser.value.role] || [])]
-    }
-  }
-  updateSelectAll()
-}
-
-// 切换权限
-const togglePermission = (key) => {
-  if (!customEnabled.value) return
-  const perms = selectedUser.value.custom_permissions || []
-  const idx = perms.indexOf(key)
-  if (idx === -1) {
-    perms.push(key)
-  } else {
-    perms.splice(idx, 1)
-  }
-  selectedUser.value.custom_permissions = perms
-  updateSelectAll()
-}
-
-// 全选
-const handleSelectAll = (checked) => {
-  if (!selectedUser.value) return
-  selectedUser.value.custom_permissions = checked
-    ? permissionModules.map(p => p.key)
-    : []
-}
-
-const updateSelectAll = () => {
-  if (!selectedUser.value?.custom_permissions) {
-    selectAll.value = false
-    return
-  }
-  selectAll.value = selectedUser.value.custom_permissions.length === permissionModules.length
-}
-
-// 重置为角色默认
-const resetToRoleDefault = () => {
-  selectedUser.value.custom_permissions = [...(roleDefaultPermissions[selectedUser.value.role] || [])]
-  ElMessage.success('已重置为角色默认权限')
-  updateSelectAll()
-}
-
-// 保存权限
-const savePermissions = async () => {
-  if (!selectedUser.value) return
-  saving.value = true
-  try {
-    // 调用后端API保存用户权限
-    await systemAPI.updateUserPermissions(selectedUser.value.id, {
-      custom_permissions: customEnabled.value ? selectedUser.value.custom_permissions : null,
-      role: selectedUser.value.role,
-      status: selectedUser.value.status
-    })
-
-    // 更新本地数据
-    const idx = allUsers.value.findIndex(u => u.id === selectedUser.value.id)
-    if (idx !== -1) {
-      allUsers.value[idx] = {
-        ...allUsers.value[idx],
-        role: selectedUser.value.role,
-        status: selectedUser.value.status,
-        custom_permissions: customEnabled.value ? selectedUser.value.custom_permissions : null
-      }
-    }
-
-    ElMessage.success('权限配置已保存')
-  } catch (err) {
-    console.error('保存失败:', err)
-    ElMessage.error('保存权限配置失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-// 状态变更
-const handleStatusChange = () => {
-  ElMessage.success(`账号已${selectedUser.value.status === 1 ? '启用' : '禁用'}`)
-}
-
-// 删除用户
-const handleDeleteUser = async () => {
-  if (!selectedUser.value) return
-
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除用户 "${selectedUser.value.username}" 吗？删除后将禁用该账号。`,
-      '删除确认',
-      {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-        confirmButtonClass: 'el-button--danger'
-      }
-    )
-
-    deleteLoading.value = true
-    await systemAPI.deleteUser(selectedUser.value.id)
-
-    // 更新本地状态
-    const user = allUsers.value.find(u => u.id === selectedUser.value.id)
-    if (user) {
-      user.status = 0 // 禁用
-    }
-    selectedUser.value.status = 0
-
-    ElMessage.success('用户已删除')
-  } catch (err) {
-    if (err !== 'cancel') {
-      console.error('删除失败:', err)
-      ElMessage.error('删除用户失败')
-    }
-  } finally {
-    deleteLoading.value = false
-  }
-}
-
-// 角色变更
-const handleRoleChange = async (newRole) => {
-  if (selectedUser.value.role === newRole) return
-  try {
-    // 调用API更新用户角色
-    await systemAPI.updateUserPermissions(selectedUser.value.id, {
-      role: newRole,
-      custom_permissions: customEnabled.value ? selectedUser.value.custom_permissions : null,
-      status: selectedUser.value.status
-    })
-    selectedUser.value.role = newRole
-    if (customEnabled.value) {
-      selectedUser.value.custom_permissions = [...(roleDefaultPermissions[newRole] || [])]
-    }
-    ElMessage.success(`已切换为${getRoleName(newRole)}角色`)
-  } catch (err) {
-    console.error('切换角色失败:', err)
-    ElMessage.error('切换角色失败')
-  }
-}
-
-// 批量设置
-const handleBatchSet = () => {
-  batchForm.role = null
-  batchForm.template = 1
-  batchForm.permissions = []
-  batchDialogVisible.value = true
-}
-
-const confirmBatchSet = async () => {
-  if (!batchForm.role) {
-    ElMessage.warning('请选择目标角色')
-    return
-  }
-
-  const perms = batchForm.template === 0
-    ? batchForm.permissions
-    : roleDefaultPermissions[batchForm.template]
-
-  try {
-    // 调用后端批量更新API
-    await systemAPI.batchUpdateRolePermissions(batchForm.role, perms)
-
-    // 更新本地数据
-    allUsers.value.forEach(user => {
-      if (user.role === batchForm.role) {
-        user.custom_permissions = [...perms]
-      }
-    })
-
-    batchDialogVisible.value = false
-    ElMessage.success(`已为所有${getRoleName(batchForm.role)}用户批量设置权限`)
-  } catch (err) {
-    console.error('批量设置失败:', err)
-    ElMessage.error('批量设置权限失败')
-  }
-}
-
-// 初始化
-onMounted(() => {
-  loadUsers()
-})
+const {
+  // State
+  loading,
+  saving,
+  deleteLoading,
+  allUsers,
+  searchQuery,
+  filterRole,
+  selectedUser,
+  customEnabled,
+  selectAll,
+  batchDialogVisible,
+  batchForm,
+  // Constants
+  roleOptions,
+  permissionModules,
+  roleDefaultPermissions,
+  // Computed
+  filteredUsers,
+  effectivePermissions,
+  isIndeterminate,
+  // Actions
+  loadUsers,
+  selectUser,
+  handleCustomToggle,
+  togglePermission,
+  handleSelectAll,
+  updateSelectAll,
+  resetToRoleDefault,
+  savePermissions,
+  handleStatusChange,
+  handleDeleteUser,
+  handleRoleChange,
+  handleBatchSet,
+  confirmBatchSet,
+  // Helpers
+  userCountByRole,
+  hasCustomPermissions,
+  isGranted,
+  isInherited,
+  isCustom,
+  getRoleName,
+  getAvatarBg,
+  getPermBg,
+  formatDate,
+  formatTimeAgo
+} = useUserPermission()
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap');
-
+/* 评估 P2-14：移除 Google Fonts 引入（国内不可达 + 规范使用系统字体栈） */
 .permission-page {
   padding: 24px;
   min-height: calc(100vh - 120px);

@@ -52,7 +52,7 @@
             <el-dropdown-menu>
               <el-dropdown-item command="publish">批量发布</el-dropdown-item>
               <el-dropdown-item command="archive">批量归档</el-dropdown-item>
-              <el-dropdown-item command="delete">批量删除</el-dropdown-item>
+              <el-dropdown-item command="delete">批量归档</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -61,7 +61,9 @@
 
     <!-- 试卷列表表格 -->
     <div class="table-container">
+      <el-empty v-if="!loading && paperList.length === 0" description="暂无试卷数据" :image-size="80" />
       <el-table
+        v-else
         ref="tableRef"
         :data="paperList"
         stripe
@@ -101,14 +103,23 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <div class="operation-buttons">
               <el-button link size="small" @click="previewPaper(row)">预览</el-button>
               <el-button link size="small" @click="editPaper(row)">编辑</el-button>
               <el-button link size="small" v-if="row.status === 0" @click="publishPaper(row)">发布</el-button>
               <el-button link size="small" v-if="row.status === 1" @click="archivePaper(row)">归档</el-button>
-              <el-button link size="small" class="delete-btn" @click="deletePaper(row)">删除</el-button>
+              <el-dropdown @command="(cmd) => handleRowCommand(cmd, row)">
+                <el-button link size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="analyze">分析</el-dropdown-item>
+                    <el-dropdown-item command="version">版本历史</el-dropdown-item>
+                    <el-dropdown-item command="similarity">查重</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </template>
         </el-table-column>
@@ -252,13 +263,369 @@
         <el-button type="primary" @click="exportPdf">导出PDF</el-button>
       </template>
     </el-dialog>
+
+    <!-- 试卷分析弹窗 -->
+    <el-dialog
+      v-model="analysisDialogVisible"
+      title="试卷分析报告"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="analysisData" class="analysis-container">
+        <!-- 基本信息 -->
+        <div class="analysis-section">
+          <h4>基本信息</h4>
+          <div class="info-cards">
+            <el-card class="info-card">
+              <div class="info-value">{{ analysisData.total_questions }}</div>
+              <div class="info-label">题目数量</div>
+            </el-card>
+            <el-card class="info-card">
+              <div class="info-value">{{ analysisData.total_score }}</div>
+              <div class="info-label">总分</div>
+            </el-card>
+            <el-card class="info-card">
+              <div class="info-value">{{ analysisData.estimated_time }}分钟</div>
+              <div class="info-label">预估完成时间</div>
+            </el-card>
+            <el-card class="info-card">
+              <div class="info-value" :class="getCoverageClass(analysisData.coverage_rate)">
+                {{ analysisData.coverage_rate }}%
+              </div>
+              <div class="info-label">知识点覆盖率</div>
+            </el-card>
+          </div>
+        </div>
+
+        <!-- 题型统计 -->
+        <div class="analysis-section">
+          <h4>题型统计</h4>
+          <el-table :data="getTypeStatsTable(analysisData.type_stats)" stripe style="width: 100%">
+            <el-table-column prop="type" label="题型" width="120">
+              <template #default="{ row }">{{ row.type }}</template>
+            </el-table-column>
+            <el-table-column prop="count" label="题数" width="80" />
+            <el-table-column prop="score" label="分值" width="80" />
+            <el-table-column label="占比">
+              <template #default="{ row }">
+                <el-progress
+                  :percentage="row.percentage"
+                  :stroke-width="12"
+                  :color="getTypeColor(row.type)"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <!-- 难度分布 -->
+        <div class="analysis-section">
+          <h4>难度分布</h4>
+          <div class="difficulty-bars">
+            <div class="difficulty-item">
+              <span class="difficulty-label">简单</span>
+              <div class="difficulty-bar-wrapper">
+                <el-progress
+                  :percentage="analysisData.difficulty_distribution.easy"
+                  :stroke-width="16"
+                  color="#67c23a"
+                  :show-text="true"
+                />
+              </div>
+              <span class="difficulty-count">{{ analysisData.difficulty_stats.easy }}题</span>
+            </div>
+            <div class="difficulty-item">
+              <span class="difficulty-label">中等</span>
+              <div class="difficulty-bar-wrapper">
+                <el-progress
+                  :percentage="analysisData.difficulty_distribution.medium"
+                  :stroke-width="16"
+                  color="#e6a23c"
+                  :show-text="true"
+                />
+              </div>
+              <span class="difficulty-count">{{ analysisData.difficulty_stats.medium }}题</span>
+            </div>
+            <div class="difficulty-item">
+              <span class="difficulty-label">困难</span>
+              <div class="difficulty-bar-wrapper">
+                <el-progress
+                  :percentage="analysisData.difficulty_distribution.hard"
+                  :stroke-width="16"
+                  color="#f56c6c"
+                  :show-text="true"
+                />
+              </div>
+              <span class="difficulty-count">{{ analysisData.difficulty_stats.hard }}题</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 知识点覆盖 -->
+        <div class="analysis-section">
+          <h4>知识点覆盖情况</h4>
+          <div class="knowledge-coverage">
+            <div class="coverage-summary">
+              <span>已配置知识点：{{ analysisData.selected_knowledge_points?.length || 0 }}个</span>
+              <span>实际覆盖：{{ analysisData.covered_knowledge_points?.length || 0 }}个</span>
+              <span>覆盖率：{{ analysisData.coverage_rate }}%</span>
+            </div>
+            <div v-if="analysisData.knowledge_point_stats && Object.keys(analysisData.knowledge_point_stats).length > 0" class="knowledge-table">
+              <el-table :data="getKnowledgePointStatsTable(analysisData.knowledge_point_stats)" stripe style="width: 100%">
+                <el-table-column prop="kp_id" label="知识点ID" width="100" />
+                <el-table-column prop="count" label="题目数" width="100" />
+                <el-table-column prop="score" label="总分" width="100" />
+                <el-table-column label="覆盖状态" width="120">
+                  <template #default="{ row }">
+                    <el-tag :type="row.covered ? 'success' : 'danger'" size="small">
+                      {{ row.covered ? '已覆盖' : '未覆盖' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <el-alert v-else type="info" :closable="false" style="margin-top: 12px;">
+              该试卷未配置知识点覆盖范围，或题目未关联知识点
+            </el-alert>
+          </div>
+        </div>
+
+        <!-- 高级分析指标 -->
+        <div class="analysis-section">
+          <h4>高级分析</h4>
+          <div class="advanced-metrics">
+            <div class="metric-card">
+              <div class="metric-label">区分度</div>
+              <div class="metric-value">
+                <el-tag :type="getDiscriminationType(analysisData.discrimination_index)" size="large">
+                  {{ analysisData.discrimination_index ?? '-' }}
+                </el-tag>
+              </div>
+              <div class="metric-desc">越高越能区分学生水平</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">预估通过率</div>
+              <div class="metric-value">
+                <el-progress
+                  :percentage="analysisData.predicted_pass_rate || 0"
+                  :stroke-width="18"
+                  :color="getPassRateColor(analysisData.predicted_pass_rate)"
+                />
+              </div>
+              <div class="metric-desc">基于难度分布估算</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">综合质量分</div>
+              <div class="metric-value">
+                <el-progress
+                  :percentage="analysisData.quality_score || 0"
+                  :stroke-width="18"
+                  :color="getQualityScoreColor(analysisData.quality_score)"
+                />
+              </div>
+              <div class="metric-desc">覆盖率、难度、区分度综合评估</div>
+            </div>
+          </div>
+
+          <!-- 知识点掌握度 -->
+          <div v-if="analysisData.knowledge_mastery && analysisData.knowledge_mastery.length > 0" class="knowledge-mastery">
+            <h5 style="margin-top: 16px;">知识点掌握度</h5>
+            <el-table :data="analysisData.knowledge_mastery" stripe style="width: 100%">
+              <el-table-column prop="knowledge_point_id" label="知识点ID" width="120" />
+              <el-table-column prop="count" label="题目数" width="100" />
+              <el-table-column prop="score" label="总分" width="100" />
+              <el-table-column prop="avg_difficulty" label="平均难度" width="120">
+                <template #default="{ row }">
+                  <el-rate
+                    :model-value="row.avg_difficulty"
+                    disabled
+                    :max="5"
+                    :colors="['#67c23a', '#e6a23c', '#f56c6c']"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column prop="mastery_level" label="掌握度" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="getMasteryType(row.mastery_level)" size="small">
+                    {{ getMasteryLabel(row.mastery_level) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 分析建议 -->
+        <div class="analysis-section" v-if="analysisSuggestions.length > 0">
+          <h4>优化建议</h4>
+          <div class="suggestions">
+            <div v-for="(suggestion, index) in analysisSuggestions" :key="index" class="suggestion-item">
+              <el-icon class="suggestion-icon"><Warning /></el-icon>
+              <span>{{ suggestion }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="analysisDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="exportWord">导出Word</el-button>
+        <el-button type="primary" @click="exportPdf">导出PDF</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 版本历史弹窗 -->
+    <el-dialog
+      v-model="versionDialogVisible"
+      title="版本历史"
+      width="800px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="currentVersionPaperId">
+        <el-table :data="versionList" stripe style="width: 100%">
+          <el-table-column prop="version_number" label="版本号" width="100" />
+          <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="change_log" label="变更说明" min-width="200" show-overflow-tooltip />
+          <el-table-column label="创建时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <el-button link size="small" @click="showVersionDetail(row)">详情</el-button>
+              <el-button link size="small" type="warning" @click="restoreVersion(row)">回滚</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pagination-container" style="margin-top: 16px; justify-content: flex-end;">
+          <el-pagination
+            v-model:current-page="versionPagination.page"
+            v-model:page-size="versionPagination.pageSize"
+            :total="versionPagination.total"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @size-change="handleVersionPageChange"
+            @current-change="handleVersionPageChange"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="versionDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 版本详情弹窗 -->
+    <el-dialog
+      v-model="versionDetailDialogVisible"
+      :title="`版本 ${versionDetail?.version_number || ''} 详情`"
+      width="800px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="versionDetail" class="version-detail">
+        <div class="version-info">
+          <p><strong>标题：</strong>{{ versionDetail.title }}</p>
+          <p v-if="versionDetail.description"><strong>描述：</strong>{{ versionDetail.description }}</p>
+          <p><strong>变更日志：</strong>{{ versionDetail.change_log || '无' }}</p>
+          <p><strong>创建时间：</strong>{{ formatDate(versionDetail.created_at) }}</p>
+        </div>
+
+        <div class="version-questions" v-if="versionDetail.questions_snapshot && versionDetail.questions_snapshot.length > 0">
+          <h4>题目列表（{{ versionDetail.questions_snapshot.length }}题）</h4>
+          <el-table :data="versionDetail.questions_snapshot" stripe style="width: 100%">
+            <el-table-column prop="order" label="序号" width="80" />
+            <el-table-column prop="question_id" label="题目ID" width="120" />
+            <el-table-column prop="score" label="分值" width="100" />
+          </el-table>
+        </div>
+        <el-alert v-else type="info" :closable="false">该版本无题目数据</el-alert>
+      </div>
+      <template #footer>
+        <el-button @click="versionDetailDialogVisible = false">关闭</el-button>
+        <el-button type="warning" @click="restoreVersion(versionDetail)">回滚到此版本</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 相似度检测弹窗 -->
+    <el-dialog
+      v-model="similarityDialogVisible"
+      title="题目相似度检测"
+      width="1000px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="similarityData">
+        <div class="similarity-summary">
+          <span>检测试卷：{{ previewPaperData?.title }}</span>
+          <span>检测题目数：{{ similarityData.total_checked }} 题</span>
+          <span>发现相似对：<strong :style="{color: similarityData.similar_pairs_count > 0 ? '#f56c6c' : '#67c23a'}">{{ similarityData.similar_pairs_count }}</strong> 对</span>
+        </div>
+
+        <el-alert v-if="similarityData.message" type="info" :closable="false" style="margin-bottom: 16px;">
+          {{ similarityData.message }}
+        </el-alert>
+
+        <el-table v-if="similarityData.similar_pairs.length > 0" :data="similarityData.similar_pairs" stripe style="width: 100%">
+          <el-table-column label="相似度" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getSimilarityType(row.similarity_score)" size="large">
+                {{ Math.round(row.similarity_score * 100) }}%
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="相似等级" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getSimilarityType(row.similarity_score)" size="small">
+                {{ getSimilarityLevel(row.similarity_score) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="question_type" label="题型" width="120">
+            <template #default="{ row }">
+              {{ getQuestionTypeName(row.question_type) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="题目A" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="similarity-content">
+                <span class="similarity-id">#{{ row.question_a_id }}</span>
+                <span>{{ row.question_a_content }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="题目B" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="similarity-content">
+                <span class="similarity-id">#{{ row.question_b_id }}</span>
+                <span>{{ row.question_b_content }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="similarity_reason" label="相似原因" min-width="180" show-overflow-tooltip />
+        </el-table>
+
+        <el-empty v-else description="未发现相似题目" :image-size="80" />
+      </div>
+      <div v-else class="similarity-empty">
+        <p>点击下方按钮开始检测试卷中的相似题目</p>
+        <div class="similarity-config">
+          <span>相似度阈值：</span>
+          <el-slider v-model="similarityThreshold" :min="0" :max="1" :step="0.1" style="width: 300px;" />
+          <span>{{ Math.round(similarityThreshold * 100) }}%</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="similarityDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="runSimilarityCheck" :loading="similarityLoading">
+          {{ similarityData ? '重新检测' : '开始检测' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, ArrowDown } from '@element-plus/icons-vue'
+import { Search, ArrowDown, Warning } from '@element-plus/icons-vue'
 import { adminAPI, systemAPI, paperAPI, api } from '@/api'
 
 // 工具函数
@@ -284,6 +651,25 @@ const currentEditId = ref(null)
 const previewPaperData = ref(null)
 const tableRef = ref(null)
 const paperFormRef = ref(null)
+
+// 试卷分析
+const analysisDialogVisible = ref(false)
+const analysisData = ref(null)
+const analysisSuggestions = ref([])
+
+// 版本管理
+const versionDialogVisible = ref(false)
+const versionDetailDialogVisible = ref(false)
+const versionList = ref([])
+const versionDetail = ref(null)
+const currentVersionPaperId = ref(null)
+const versionPagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
+// 相似度检测
+const similarityDialogVisible = ref(false)
+const similarityLoading = ref(false)
+const similarityData = ref(null)
+const similarityThreshold = ref(0.7)
 
 // 分页
 const pagination = reactive({
@@ -487,6 +873,17 @@ const editPaper = (row) => {
   paperDialogVisible.value = true
 }
 
+// 行内更多操作
+const handleRowCommand = (command, row) => {
+  if (command === 'analyze') {
+    analyzePaper(row)
+  } else if (command === 'version') {
+    showVersionHistory(row)
+  } else if (command === 'similarity') {
+    showSimilarityCheck(row)
+  }
+}
+
 // 重置表单
 const resetPaperForm = () => {
   paperForm.title = ''
@@ -549,6 +946,235 @@ const previewPaper = async (row) => {
   }
 }
 
+// 分析试卷
+const analyzePaper = async (row) => {
+  try {
+    const res = await paperAPI.getPaperAnalysis(row.id)
+    analysisData.value = res.data
+    analysisSuggestions.value = generateAnalysisSuggestions(res.data)
+    analysisDialogVisible.value = true
+  } catch (e) {
+    console.error('获取试卷分析失败:', e)
+    ElMessage.error('获取试卷分析失败')
+  }
+}
+
+// 版本管理
+const showVersionHistory = async (row) => {
+  currentVersionPaperId.value = row.id
+  versionDialogVisible.value = true
+  await fetchVersions(row.id)
+}
+
+const fetchVersions = async (paperId) => {
+  versionList.value = []
+  versionPagination.total = 0
+  try {
+    const res = await paperAPI.getPaperVersions(paperId, { page: versionPagination.page, page_size: versionPagination.pageSize })
+    versionList.value = res.data?.items || []
+    versionPagination.total = res.data?.total || 0
+  } catch (e) {
+    console.error('获取版本历史失败:', e)
+    ElMessage.error('获取版本历史失败')
+  }
+}
+
+const showVersionDetail = async (version) => {
+  try {
+    const res = await paperAPI.getPaperVersion(currentVersionPaperId.value, version.id)
+    versionDetail.value = res.data
+    versionDetailDialogVisible.value = true
+  } catch (e) {
+    console.error('获取版本详情失败:', e)
+    ElMessage.error('获取版本详情失败')
+  }
+}
+
+const restoreVersion = async (version) => {
+  try {
+    await ElMessageBox.confirm(`确定要回滚到版本 ${version.version_number} 吗？当前版本将被覆盖。`, '确认回滚', { type: 'warning' })
+    await paperAPI.restorePaperVersion(currentVersionPaperId.value, version.id)
+    ElMessage.success(`已回滚到版本 ${version.version_number}`)
+    versionDetailDialogVisible.value = false
+    await fetchVersions(currentVersionPaperId.value)
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('回滚失败:', e)
+      ElMessage.error('回滚失败')
+    }
+  }
+}
+
+const handleVersionPageChange = () => {
+  fetchVersions(currentVersionPaperId.value)
+}
+
+// 相似度检测
+const showSimilarityCheck = (row) => {
+  similarityData.value = null
+  similarityThreshold.value = 0.7
+  similarityDialogVisible.value = true
+}
+
+const runSimilarityCheck = async () => {
+  if (!previewPaperData.value) return
+  similarityLoading.value = true
+  try {
+    const res = await paperAPI.checkSimilarity(previewPaperData.value.id, {
+      threshold: similarityThreshold.value
+    })
+    similarityData.value = res.data
+    if (similarityData.value.similar_pairs_count === 0) {
+      ElMessage.success('未发现相似题目')
+    } else {
+      ElMessage.warning(`发现 ${similarityData.value.similar_pairs_count} 对相似题目`)
+    }
+  } catch (e) {
+    console.error('相似度检测失败:', e)
+    ElMessage.error('相似度检测失败')
+  } finally {
+    similarityLoading.value = false
+  }
+}
+
+const getSimilarityType = (score) => {
+  if (score >= 0.9) return 'danger'
+  if (score >= 0.8) return 'warning'
+  return 'info'
+}
+
+const getSimilarityLevel = (score) => {
+  if (score >= 0.9) return '高度相似'
+  if (score >= 0.8) return '中度相似'
+  return '轻度相似'
+}
+
+// 生成分析建议
+const generateAnalysisSuggestions = (data) => {
+  const suggestions = []
+
+  // 知识点覆盖率建议
+  if (data.coverage_rate < 60) {
+    suggestions.push(`知识点覆盖率仅${data.coverage_rate}%，建议补充更多知识点以确保考核全面性`)
+  } else if (data.coverage_rate < 80) {
+    suggestions.push(`知识点覆盖率为${data.coverage_rate}%，覆盖率良好，可考虑补充部分未覆盖知识点`)
+  }
+
+  // 难度分布建议
+  const easyPercent = data.difficulty_distribution.easy || 0
+  const hardPercent = data.difficulty_distribution.hard || 0
+
+  if (easyPercent > 60) {
+    suggestions.push('简单题目占比过高，建议增加中等和困难题目以提升试卷区分度')
+  } else if (hardPercent > 50) {
+    suggestions.push('困难题目占比过高，建议适当增加简单和中等题目，避免试卷过于困难')
+  }
+
+  // 题型分布建议
+  const typeStats = data.type_stats || {}
+  const totalQuestions = data.total_questions || 0
+
+  if (totalQuestions > 0) {
+    const choiceQuestions = (typeStats.single_choice?.count || 0) + (typeStats.multiple_choice?.count || 0)
+    const choicePercent = choiceQuestions / totalQuestions * 100
+
+    if (choicePercent > 80) {
+      suggestions.push('客观题（选择题）占比过高，建议增加主观题（如简答题）以考察综合能力')
+    }
+  }
+
+  // 预估时间建议
+  if (data.estimated_time > data.total_time) {
+    suggestions.push(`预估完成时间（${data.estimated_time}分钟）超过试卷设定时长（${data.total_time}分钟），建议适当减少题量或增加时长`)
+  }
+
+  // 高级指标建议
+  if (data.discrimination_index != null && data.discrimination_index < 5) {
+    suggestions.push(`区分度较低（${data.discrimination_index}/10），建议调整难度分布，增加中高难度题目比例`)
+  }
+
+  if (data.predicted_pass_rate != null && data.predicted_pass_rate < 50) {
+    suggestions.push(`预估通过率偏低（${data.predicted_pass_rate}%），建议适当降低难度或增加基础题`)
+  } else if (data.predicted_pass_rate != null && data.predicted_pass_rate > 90) {
+    suggestions.push(`预估通过率偏高（${data.predicted_pass_rate}%），建议适当提升难度以更好区分学生水平`)
+  }
+
+  if (data.quality_score != null && data.quality_score < 60) {
+    suggestions.push(`试卷综合质量分较低（${data.quality_score}/100），建议优化知识点覆盖、难度分布和题型配比`)
+  }
+
+  return suggestions
+}
+
+// 分析数据格式化辅助函数
+const getTypeStatsTable = (typeStats) => {
+  if (!typeStats) return []
+  const total = Object.values(typeStats).reduce((sum, item) => sum + (item.count || 0), 0)
+  return Object.entries(typeStats).map(([type, stats]) => ({
+    type: getQuestionTypeName(type),
+    count: stats.count || 0,
+    score: stats.score || 0,
+    percentage: total > 0 ? Math.round((stats.count / total) * 100) : 0
+  }))
+}
+
+const getTypeColor = (type) => {
+  const map = {
+    '单选题': '#409eff',
+    '多选题': '#67c23a',
+    '判断题': '#e6a23c',
+    '简答题': '#f56c6c'
+  }
+  return map[type] || '#909399'
+}
+
+const getCoverageClass = (rate) => {
+  if (rate >= 80) return 'coverage-good'
+  if (rate >= 60) return 'coverage-medium'
+  return 'coverage-poor'
+}
+
+const getKnowledgePointStatsTable = (kpStats) => {
+  if (!kpStats) return []
+  return Object.entries(kpStats).map(([kpId, stats]) => ({
+    kp_id: kpId,
+    count: stats.count || 0,
+    score: stats.score || 0,
+    covered: (stats.count || 0) > 0
+  }))
+}
+
+const getDiscriminationType = (value) => {
+  if (value == null) return 'info'
+  if (value >= 8) return 'success'
+  if (value >= 5) return 'warning'
+  return 'danger'
+}
+
+const getPassRateColor = (value) => {
+  if (value == null) return '#909399'
+  if (value >= 75) return '#67c23a'
+  if (value >= 50) return '#e6a23c'
+  return '#f56c6c'
+}
+
+const getQualityScoreColor = (value) => {
+  if (value == null) return '#909399'
+  if (value >= 80) return '#67c23a'
+  if (value >= 60) return '#e6a23c'
+  return '#f56c6c'
+}
+
+const getMasteryType = (level) => {
+  const map = { high: 'success', medium: 'warning', low: 'danger' }
+  return map[level] || 'info'
+}
+
+const getMasteryLabel = (level) => {
+  const map = { high: '掌握良好', medium: '一般', low: '待加强' }
+  return map[level] || level
+}
+
 // 发布试卷
 const publishPaper = (row) => {
   ElMessageBox.confirm('确定要发布这份试卷吗？', '确认发布', { type: 'info' })
@@ -581,17 +1207,17 @@ const archivePaper = (row) => {
     .catch(() => {})
 }
 
-// 删除试卷
+// 归档试卷
 const deletePaper = (row) => {
-  ElMessageBox.confirm(`确定要删除试卷"${row.title}"吗？此操作不可恢复。`, '确认删除', { type: 'warning' })
+  ElMessageBox.confirm(`确定要归档试卷"${row.title}"吗？`, '确认归档', { type: 'warning' })
     .then(async () => {
       try {
         await adminAPI.deletePaper(Number(row.id))
-        ElMessage.success('删除成功')
+        ElMessage.success('归档成功')
         fetchPaperList()
       } catch (e) {
-        console.error('删除失败:', e)
-        ElMessage.error('删除失败')
+        console.error('归档失败:', e)
+        ElMessage.error('归档失败')
       }
     })
     .catch(() => {})
@@ -635,16 +1261,16 @@ const handleBatchCommand = (command) => {
       })
       .catch(() => {})
   } else if (command === 'delete') {
-    ElMessageBox.confirm(`确定要删除选中的 ${ids.length} 份试卷吗？此操作不可恢复。`, '批量删除', { type: 'warning' })
+    ElMessageBox.confirm(`确定要归档选中的 ${ids.length} 份试卷吗？`, '批量归档', { type: 'warning' })
       .then(async () => {
         try {
           for (const id of ids) {
             await adminAPI.deletePaper(Number(id))
           }
-          ElMessage.success('批量删除成功')
+          ElMessage.success('批量归档成功')
           fetchPaperList()
         } catch (e) {
-          ElMessage.error('批量删除失败')
+          ElMessage.error('批量归档失败')
         }
       })
       .catch(() => {})
@@ -879,5 +1505,207 @@ const exportPdf = async () => {
 .explanation-label {
   color: #909eff;
   font-weight: 500;
+}
+
+/* Analysis styles */
+.analysis-container {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.analysis-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.analysis-section:last-child {
+  border-bottom: none;
+}
+
+.analysis-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #303133;
+  font-weight: 600;
+}
+
+.info-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.info-card {
+  text-align: center;
+  padding: 16px;
+}
+
+.info-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.info-label {
+  font-size: 13px;
+  color: #909399;
+}
+
+.coverage-good {
+  color: #67c23a;
+}
+
+.coverage-medium {
+  color: #e6a23c;
+}
+
+.coverage-poor {
+  color: #f56c6c;
+}
+
+.difficulty-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.difficulty-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.difficulty-label {
+  width: 60px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.difficulty-bar-wrapper {
+  flex: 1;
+}
+
+.difficulty-count {
+  width: 80px;
+  text-align: right;
+  font-size: 14px;
+  color: #606266;
+}
+
+.coverage-summary {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.knowledge-table {
+  margin-top: 12px;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: #fdf6ec;
+  border-left: 4px solid #e6a23c;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.suggestion-icon {
+  color: #e6a23c;
+  margin-top: 2px;
+}
+
+.advanced-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.metric-card {
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.metric-label {
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 12px;
+}
+
+.metric-value {
+  margin-bottom: 8px;
+}
+
+.metric-desc {
+  font-size: 12px;
+  color: #909399;
+}
+
+.knowledge-mastery {
+  margin-top: 16px;
+}
+
+.similarity-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.similarity-summary span:last-child {
+  font-weight: 600;
+}
+
+.similarity-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+}
+
+.similarity-config {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.similarity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.similarity-id {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

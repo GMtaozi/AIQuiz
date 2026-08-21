@@ -9,24 +9,28 @@
     <!-- 统计卡片 -->
     <el-row :gutter="20" class="stat-cards">
       <el-col :xs="24" :sm="12" :lg="6" v-for="(stat, index) in stats" :key="index">
-        <div
-          class="stat-card"
-          :class="[`stat-card-${index}`, { 'animate-in': mounted }]"
-          :style="{ '--delay': `${index * 100}ms`, '--accent': stat.color }"
-        >
-          <div class="stat-card-bg"></div>
-          <div class="stat-card-content">
-            <div class="stat-icon-wrap">
-              <el-icon :size="24" class="stat-icon">
-                <component :is="stat.icon" />
-              </el-icon>
+        <el-skeleton :loading="loading" animated>
+          <template #default>
+            <div
+              class="stat-card"
+              :class="[`stat-card-${index}`, { 'animate-in': mounted }]"
+              :style="{ '--delay': `${index * 100}ms`, '--accent': stat.color }"
+            >
+              <div class="stat-card-bg"></div>
+              <div class="stat-card-content">
+                <div class="stat-icon-wrap">
+                  <el-icon :size="24" class="stat-icon">
+                    <component :is="stat.icon" />
+                  </el-icon>
+                </div>
+                <div class="stat-info">
+                  <div class="stat-value">{{ animatedValues[index] }}</div>
+                  <div class="stat-label">{{ stat.label }}</div>
+                </div>
+              </div>
             </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ animatedValues[index] }}</div>
-              <div class="stat-label">{{ stat.label }}</div>
-            </div>
-          </div>
-        </div>
+          </template>
+        </el-skeleton>
       </el-col>
     </el-row>
 
@@ -47,7 +51,7 @@
               </el-radio-group>
             </div>
           </template>
-          <div ref="trendChartRef" class="chart-container"></div>
+          <div ref="trendChartRef" class="chart-container" v-loading="loading" element-loading-text="加载中..."></div>
         </el-card>
       </el-col>
       <el-col :xs="24" :lg="8">
@@ -58,7 +62,7 @@
               <span class="chart-subtitle">各类题型占比</span>
             </div>
           </template>
-          <div ref="pieChartRef" class="chart-container pie-container"></div>
+          <div ref="pieChartRef" class="chart-container pie-container" v-loading="loading" element-loading-text="加载中..."></div>
         </el-card>
       </el-col>
     </el-row>
@@ -136,13 +140,15 @@ import { dashboardAPI, auditAPI } from '@/api'
 
 const router = useRouter()
 const mounted = ref(false)
+const loading = ref(false)
+const dashboardError = ref('')
 
 // 统计数据 - 从API加载
 const stats = reactive([
-  { label: '总题库量', value: 0, icon: 'Document', color: '#3B82F6' },
-  { label: '今日新增', value: 0, icon: 'Plus', color: '#10B981' },
-  { label: '总试卷数', value: 0, icon: 'Collection', color: '#8B5CF6' },
-  { label: '待审核', value: 0, icon: 'Clock', color: '#F59E0B' }
+  { label: '总题库量', value: 0, icon: 'Document', color: '#165DFF' },
+  { label: '今日新增', value: 0, icon: 'Plus', color: '#67C23A' },
+  { label: '总试卷数', value: 0, icon: 'Collection', color: '#E6A23C' },
+  { label: '待审核', value: 0, icon: 'Clock', color: '#F56C6C' }
 ])
 
 const animatedValues = ref([0, 0, 0, 0])
@@ -167,6 +173,8 @@ const pieChartRef = ref(null)
 
 // 获取仪表盘数据
 const fetchDashboardData = async () => {
+  loading.value = true
+  dashboardError.value = ''
   try {
     const response = await dashboardAPI.getOverview()
     const data = response.data
@@ -183,7 +191,7 @@ const fetchDashboardData = async () => {
     // 更新题型分布饼图
     pieData.value = [
       { value: data.question_type_dist.single_choice || 0, name: '单选题', itemStyle: { color: '#3B82F6' } },
-      { value: data.question_type_dist.multiple_choice || 0, name: '多选题', itemStyle: { color: '#8B5CF6' } },
+      { value: data.question_type_dist.multiple_choice || 0, name: '多选题', itemStyle: { color: '#909399' } },
       { value: data.question_type_dist.true_false || 0, name: '判断题', itemStyle: { color: '#10B981' } },
       { value: data.question_type_dist.essay || 0, name: '简答题', itemStyle: { color: '#F59E0B' } }
     ]
@@ -208,7 +216,7 @@ const fetchDashboardData = async () => {
       title: getActivityTitle(a.type),
       desc: a.description,
       time: formatTime(a.created_at),
-      color: ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'][i % 5]
+      color: ['#165DFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399'][i % 5]  // 评估 P2-14：规范功能色板
     }))
 
     // 初始化图表
@@ -219,6 +227,10 @@ const fetchDashboardData = async () => {
 
   } catch (error) {
     console.error('获取仪表盘数据失败:', error)
+    dashboardError.value = '获取仪表盘数据失败，请刷新重试'
+    ElMessage.error(dashboardError.value)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -395,7 +407,7 @@ const initPieChart = () => {
         },
         data: pieData.value.length > 0 ? pieData.value : [
           { value: 0, name: '单选题', itemStyle: { color: '#3B82F6' } },
-          { value: 0, name: '多选题', itemStyle: { color: '#8B5CF6' } },
+          { value: 0, name: '多选题', itemStyle: { color: '#909399' } },
           { value: 0, name: '判断题', itemStyle: { color: '#10B981' } },
           { value: 0, name: '简答题', itemStyle: { color: '#F59E0B' } }
         ],
@@ -775,7 +787,7 @@ onUnmounted(() => {
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: linear-gradient(to bottom, #3B82F6 0%, #8B5CF6 50%, #10B981 100%);
+  background: linear-gradient(to bottom, #165DFF 0%, #4080FF 100%);  /* 评估 P2-14：紫色 → 规范主色 */
   border-radius: 1px;
 }
 

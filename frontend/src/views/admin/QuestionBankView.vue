@@ -72,12 +72,15 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button type="warning" @click="showSimilarityCheck">查重</el-button>
       </div>
     </div>
 
     <!-- 题目列表表格 -->
     <div class="table-container">
+      <el-empty v-if="!loading && questionList.length === 0" description="暂无题目数据" :image-size="80" />
       <el-table
+        v-else
         ref="tableRef"
         :data="questionList"
         stripe
@@ -288,7 +291,7 @@
             :class="{ correct: isCorrectAnswer(index) }"
           >
             <span class="option-label">{{ String.fromCharCode(65 + index) }}.</span>
-            <span v-html="option.option_content"></span>
+            <span v-html="renderMarkdown(option.option_content)"></span>
           </div>
         </div>
         <div class="preview-answer">
@@ -493,6 +496,80 @@
         <el-button type="primary" @click="startExport">导出</el-button>
       </template>
     </el-dialog>
+
+    <!-- 相似度检测弹窗 -->
+    <el-dialog
+      v-model="similarityDialogVisible"
+      title="题目相似度检测"
+      width="1000px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="similarityData">
+        <div class="similarity-summary">
+          <span>检测范围：{{ getFilterSummary() }}</span>
+          <span>发现相似对：<strong :style="{color: similarityData.similar_pairs_count > 0 ? '#f56c6c' : '#67c23a'}">{{ similarityData.similar_pairs_count }}</strong> 对</span>
+        </div>
+
+        <el-alert v-if="similarityData.message" type="info" :closable="false" style="margin-bottom: 16px;">
+          {{ similarityData.message }}
+        </el-alert>
+
+        <el-table v-if="similarityData.similar_pairs.length > 0" :data="similarityData.similar_pairs" stripe style="width: 100%">
+          <el-table-column label="相似度" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getSimilarityType(row.similarity_score)" size="large">
+                {{ Math.round(row.similarity_score * 100) }}%
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="相似等级" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getSimilarityType(row.similarity_score)" size="small">
+                {{ getSimilarityLevel(row.similarity_score) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="question_type" label="题型" width="120">
+            <template #default="{ row }">
+              {{ getTypeName(row.question_type) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="题目A" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="similarity-content">
+                <span class="similarity-id">#{{ row.question_a_id }}</span>
+                <span>{{ row.question_a_content }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="题目B" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="similarity-content">
+                <span class="similarity-id">#{{ row.question_b_id }}</span>
+                <span>{{ row.question_b_content }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="similarity_reason" label="相似原因" min-width="180" show-overflow-tooltip />
+        </el-table>
+
+        <el-empty v-else description="未发现相似题目" :image-size="80" />
+      </div>
+      <div v-else class="similarity-empty">
+        <p>点击下方按钮开始检测题库中的相似题目</p>
+        <div class="similarity-config">
+          <span>相似度阈值：</span>
+          <el-slider v-model="similarityThreshold" :min="0" :max="1" :step="0.1" style="width: 300px;" />
+          <span>{{ Math.round(similarityThreshold * 100) }}%</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="similarityDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="runSimilarityCheck" :loading="similarityLoading">
+          {{ similarityData ? '重新检测' : '开始检测' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -503,700 +580,120 @@ import {
   Search, ArrowDown, CircleCheck, Select, Finished, Edit,
   UploadFilled
 } from '@element-plus/icons-vue'
-import { adminAPI, systemAPI, questionBankAPI } from '@/api'
+import { useQuestionBank } from '@/composables/useQuestionBank'
 
-// 状态
-const loading = ref(false)
-const searchKeyword = ref('')
-const questionList = ref([])
-const selectedQuestions = ref([])
-
-// 考试种类和科目
-const categoryOptions = ref([])
-const examTypeOptions = ref([])
-const loadingCategories = ref(false)
-const loadingExamTypes = ref(false)
-
-// 弹窗状态
-const questionDialogVisible = ref(false)
-const previewDialogVisible = ref(false)
-const importDialogVisible = ref(false)
-const exportDialogVisible = ref(false)
-const isEdit = ref(false)
-const submitLoading = ref(false)
-const currentQuestion = ref(null)
-
-// 导入相关
-const importTab = ref('excel')
-const importFormat = ref('excel')
-const importText = ref('')
-const importing = ref(false)
-const importProgress = ref(0)
-const importedCount = ref(0)
-const totalCount = ref(0)
-const importResult = ref(null)
-const uploadRef = ref(null)
-const selectedFile = ref(null)
-const importCategoryId = ref(null)
-const importSubjectId = ref(null)
-const previewResult = ref(null)
-
-// 导出相关
-const exportForm = reactive({
-  format: 'excel',
-  scope: 'filtered',
-  fields: ['content', 'type', 'difficulty', 'answer']
-})
-
-// 分页
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  total: 0
-})
-
-// 筛选表单
-const filterForm = reactive({
-  categoryId: null,
-  examTypeId: null,
-  questionType: '',
-  difficulty: '',
-  status: null
-})
-
-// 题目表单
-const questionForm = reactive({
-  id: null,
-  type: 'single',
-  difficulty: 'medium',
-  score: 5,
-  content: '',
-  options: [
-    { content: '' },
-    { content: '' },
-    { content: '' },
-    { content: '' }
-  ],
-  correctAnswer: 0,
-  judgeAnswer: true,
-  knowledgePointIds: [],
-  explanation: ''
-})
-
-// 表单校验规则
-const formRules = {
-  type: [{ required: true, message: '请选择题型', trigger: 'change' }],
-  difficulty: [{ required: true, message: '请选择难度', trigger: 'change' }],
-  content: [{ required: true, message: '请输入题目内容', trigger: 'blur' }]
+// 获取筛选条件摘要
+const getFilterSummary = () => {
+  const parts = []
+  if (filterForm.examTypeId) {
+    const subject = examTypeOptions.value.find(et => et.id === filterForm.examTypeId)
+    if (subject) parts.push(subject.name)
+  }
+  if (filterForm.questionType) {
+    const typeMap = { single: '单选题', multiple: '多选题', judge: '判断题', short_answer: '简答题' }
+    parts.push(typeMap[filterForm.questionType] || filterForm.questionType)
+  }
+  if (filterForm.difficulty) {
+    const diffMap = { easy: '简单', medium: '中等', hard: '困难' }
+    parts.push(diffMap[filterForm.difficulty] || filterForm.difficulty)
+  }
+  return parts.length > 0 ? parts.join(' / ') : '全部题目'
 }
 
-// 计算属性
-const importProgressStatus = computed(() => {
-  if (importProgress.value === 100) return 'success'
-  return undefined
-})
+const {
+  // State
+  loading,
+  searchKeyword,
+  questionList,
+  selectedQuestions,
+  categoryOptions,
+  examTypeOptions,
+  loadingCategories,
+  loadingExamTypes,
+  questionDialogVisible,
+  previewDialogVisible,
+  importDialogVisible,
+  exportDialogVisible,
+  isEdit,
+  submitLoading,
+  currentQuestion,
+  importTab,
+  importFormat,
+  importText,
+  importing,
+  importProgress,
+  importedCount,
+  totalCount,
+  importResult,
+  uploadRef,
+  selectedFile,
+  importCategoryId,
+  importSubjectId,
+  previewResult,
+  // Forms
+  exportForm,
+  pagination,
+  filterForm,
+  questionForm,
+  formRules,
+  // Computed
+  importProgressStatus,
+  filteredExamTypeOptions,
+  // Actions
+  handleCategoryChange,
+  fetchCategories,
+  fetchExamTypes,
+  fetchQuestionList,
+  handleSearch,
+  handleSizeChange,
+  handlePageChange,
+  handleSelectionChange,
+  handleStatusChange,
+  handleBatchCommand,
+  handleBatchDelete,
+  handleBatchStatusChange,
+  openQuestionDialog,
+  editQuestion,
+  resetQuestionForm,
+  submitQuestionForm,
+  deleteQuestion,
+  showImportDialog,
+  handlePreview,
+  resetPreview,
+  handleFileChange,
+  downloadTemplate,
+  startImport,
+  showExportDialog,
+  startExport,
+  // Helpers
+  getTypeName,
+  getDifficultyType,
+  getDifficultyName,
+  getStatusName,
+  getStatusTagType,
+  getExamTypeName,
+  getCategoryName,
+  formatDate,
+  renderMarkdown,
+  isCorrectAnswer,
+  formatAnswer,
+  // 相似度检测
+  similarityDialogVisible,
+  similarityLoading,
+  similarityData,
+  similarityThreshold,
+  showSimilarityCheck,
+  runSimilarityCheck,
+  getSimilarityType,
+  getSimilarityLevel
+} = useQuestionBank()
 
-const filteredExamTypeOptions = computed(() => {
-  if (!filterForm.categoryId) return examTypeOptions.value
-  return examTypeOptions.value.filter(et => et.category_id === filterForm.categoryId)
-})
-
-// 考试种类变化时清空考试科目
-const handleCategoryChange = () => {
-  filterForm.examTypeId = null
-}
-
-// 生命周期
+// Initialize
 onMounted(() => {
   fetchCategories()
   fetchExamTypes()
   fetchQuestionList()
 })
-
-// 获取考试种类
-const fetchCategories = async () => {
-  loadingCategories.value = true
-  try {
-    const res = await systemAPI.getExamCategories()
-    categoryOptions.value = res.data?.items || res.data || []
-    console.log('考试种类数据:', JSON.stringify(categoryOptions.value, null, 2))
-  } catch (e) {
-    console.error('获取考试种类失败:', e)
-  } finally {
-    loadingCategories.value = false
-  }
-}
-
-// 获取考试科目
-const fetchExamTypes = async () => {
-  loadingExamTypes.value = true
-  try {
-    const res = await systemAPI.getExamTypes()
-    // 支持多种返回结构
-    examTypeOptions.value = res.data?.items || res.data || []
-    console.log('考试科目数据:', JSON.stringify(examTypeOptions.value, null, 2))
-  } catch (e) {
-    console.error('获取考试科目失败:', e)
-  } finally {
-    loadingExamTypes.value = false
-  }
-}
-
-// 获取题目列表
-const fetchQuestionList = async () => {
-  loading.value = true
-  try {
-    // 转换题型: single -> single_choice, multiple -> multiple_choice, judge -> true_false, short_answer -> essay
-    const typeMap = { single: 'single_choice', multiple: 'multiple_choice', judge: 'true_false', short_answer: 'essay' }
-    // 转换难度: easy -> 2, medium -> 3, hard -> 4
-    const difficultyMap = { easy: 2, medium: 3, hard: 4 }
-
-    const params = {
-      page: pagination.page,
-      page_size: pagination.pageSize,
-      keyword: searchKeyword.value || undefined,
-      question_type: filterForm.questionType ? (typeMap[filterForm.questionType] || filterForm.questionType) : undefined,
-      difficulty: filterForm.difficulty ? (difficultyMap[filterForm.difficulty] || parseInt(filterForm.difficulty)) : undefined,
-      category_id: filterForm.categoryId || undefined,
-      subject_id: filterForm.examTypeId || undefined,
-      status: filterForm.status !== null ? filterForm.status : undefined
-    }
-    const response = await adminAPI.getQuestions(params)
-    let list = response.data.items.map(item => ({
-      ...item,
-      createTime: item.created_at || item.createTime,
-      status: item.status ?? 1,
-      knowledgePoints: item.knowledgePoints || [],
-      meta: item.meta || {}
-    }))
-    // 排序：启用(1) > 待启用(2) > 禁用(0)
-    list.sort((a, b) => {
-      const order = { 1: 0, 2: 1, 0: 2 }
-      return (order[a.status] ?? 3) - (order[b.status] ?? 3)
-    })
-    questionList.value = list
-    pagination.total = response.data.total
-  } catch (error) {
-    ElMessage.error('获取题目列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索
-const handleSearch = () => {
-  pagination.page = 1
-  fetchQuestionList()
-}
-
-// 分页
-const handleSizeChange = (val) => {
-  pagination.pageSize = val
-  fetchQuestionList()
-}
-
-const handlePageChange = (val) => {
-  pagination.page = val
-  fetchQuestionList()
-}
-
-// 选择变化
-const handleSelectionChange = (selection) => {
-  selectedQuestions.value = selection
-}
-
-// 状态切换
-const handleStatusChange = async (row) => {
-  try {
-    await adminAPI.updateQuestionStatus(row.id, { status: row.status })
-    ElMessage.success('状态更新成功')
-  } catch (error) {
-    ElMessage.error('状态更新失败')
-    row.status = row.status === 1 ? 0 : 1
-  }
-}
-
-// 批量操作
-const handleBatchCommand = (command) => {
-  switch (command) {
-    case 'import':
-      showImportDialog()
-      break
-    case 'delete':
-      if (selectedQuestions.value.length === 0) {
-        ElMessage.warning('请先选择题目')
-        return
-      }
-      handleBatchDelete()
-      break
-    case 'export':
-      if (selectedQuestions.value.length === 0) {
-        ElMessage.warning('请先选择题目')
-        return
-      }
-      exportDialogVisible.value = true
-      break
-    case 'status':
-      if (selectedQuestions.value.length === 0) {
-        ElMessage.warning('请先选择题目')
-        return
-      }
-      handleBatchStatusChange()
-      break
-  }
-}
-
-// 批量删除（软删除：直接禁用）
-const handleBatchDelete = () => {
-  ElMessageBox.confirm(`确定要删除选中的 ${selectedQuestions.value.length} 道题目吗？删除后可在状态筛选中恢复。`, '提示', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      // 批量删除实际上是软删除：直接设置状态为禁用
-      for (const question of selectedQuestions.value) {
-        await adminAPI.updateQuestion(question.id, { status: 0 })
-      }
-      ElMessage.success('删除成功（已禁用）')
-      fetchQuestionList()
-    } catch (error) {
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-// 批量修改状态：启用(1)→待启用(2)，待启用(2)→启用(1)，禁用(0)不可操作
-const handleBatchStatusChange = () => {
-  // 检查是否有禁用的题目
-  const disabledQuestions = selectedQuestions.value.filter(q => q.status === 0)
-  if (disabledQuestions.length > 0) {
-    ElMessage.warning('选中的题目中包含禁用状态，无法修改')
-    return
-  }
-
-  // 统计启用和待启用的数量
-  const enabledCount = selectedQuestions.value.filter(q => q.status === 1).length
-  const pendingCount = selectedQuestions.value.filter(q => q.status === 2).length
-
-  if (pendingCount > 0 && enabledCount > 0) {
-    ElMessage.warning('不能同时选中"待启用"和"启用"状态的题目')
-    return
-  }
-
-  let confirmMsg = ''
-  let newStatus = 2
-
-  if (enabledCount > 0) {
-    // 启用 → 待启用
-    confirmMsg = `确定要将选中的 ${enabledCount} 道题目从"启用"设为"待启用"吗？待启用的题目可以通过再次修改状态恢复为"启用"。`
-    newStatus = 2
-  } else if (pendingCount > 0) {
-    // 待启用 → 启用
-    confirmMsg = `确定要将选中的 ${pendingCount} 道题目从"待启用"恢复为"启用"吗？`
-    newStatus = 1
-  }
-
-  ElMessageBox.confirm(confirmMsg, '提示', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      for (const question of selectedQuestions.value) {
-        if (question.status === 1 && newStatus === 2) {
-          await adminAPI.updateQuestion(question.id, { status: 2 })
-        } else if (question.status === 2 && newStatus === 1) {
-          await adminAPI.updateQuestion(question.id, { status: 1 })
-        }
-      }
-      ElMessage.success(newStatus === 2 ? '已设为待启用' : '已恢复为启用')
-      fetchQuestionList()
-    } catch (error) {
-      ElMessage.error('状态更新失败')
-    }
-  }).catch(() => {})
-}
-
-// 新建/编辑题目
-const openQuestionDialog = () => {
-  isEdit.value = false
-  resetQuestionForm()
-  questionDialogVisible.value = true
-}
-
-const editQuestion = (row) => {
-  isEdit.value = true
-  // 转换题型: single_choice -> single, multiple_choice -> multiple, true_false -> judge, essay -> short_answer
-  const typeMap = { 'single_choice': 'single', 'multiple_choice': 'multiple', 'true_false': 'judge', 'essay': 'short_answer' }
-  // 转换难度: 1-2 -> easy, 3 -> medium, 4-5 -> hard
-  const difficultyMap = { 1: 'easy', 2: 'easy', 3: 'medium', 4: 'hard', 5: 'hard' }
-
-  Object.assign(questionForm, {
-    id: row.id,
-    type: typeMap[row.question_type] || row.question_type,
-    difficulty: difficultyMap[row.difficulty] || row.difficulty,
-    score: row.score,
-    content: row.content,
-    options: (row.options || []).map(opt => ({
-      content: opt.option_content || ''
-    })),
-    correctAnswer: row.answer || 0,
-    judgeAnswer: row.answer === 'true',
-    // 从 meta.knowledge_point_ids 获取知识点ID列表
-    knowledgePointIds: row.meta?.knowledge_point_ids || [],
-    explanation: row.explanation || ''
-  })
-  questionDialogVisible.value = true
-}
-
-// 重置表单
-const resetQuestionForm = () => {
-  questionForm.id = null
-  questionForm.type = 'single'
-  questionForm.difficulty = 'medium'
-  questionForm.score = 5
-  questionForm.content = ''
-  questionForm.options = [
-    { content: '' },
-    { content: '' },
-    { content: '' },
-    { content: '' }
-  ]
-  questionForm.correctAnswer = 0
-  questionForm.judgeAnswer = true
-  questionForm.knowledgePointIds = []
-  questionForm.explanation = ''
-}
-
-// 提交表单
-const submitQuestionForm = async () => {
-  try {
-    submitLoading.value = true
-    const data = { ...questionForm }
-
-    if (data.type === 'judge') {
-      data.correctAnswer = data.judgeAnswer ? 'true' : 'false'
-    }
-
-    if (isEdit.value) {
-      await adminAPI.updateQuestion(data.id, data)
-      ElMessage.success('更新成功')
-    } else {
-      await adminAPI.createQuestion(data)
-      ElMessage.success('创建成功')
-    }
-    questionDialogVisible.value = false
-    fetchQuestionList()
-  } catch (error) {
-    ElMessage.error('操作失败')
-  } finally {
-    submitLoading.value = false
-  }
-}
-
-// 删除题目
-const deleteQuestion = (id) => {
-  ElMessageBox.confirm('确定要删除这道题目吗？', '提示', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      await adminAPI.deleteQuestion(id)
-      ElMessage.success('删除成功')
-      fetchQuestionList()
-    } catch (error) {
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-// 预览题目
-const previewQuestion = (row) => {
-  currentQuestion.value = row
-  previewDialogVisible.value = true
-}
-
-// 选项操作
-const addOption = () => {
-  if (questionForm.options.length < 6) {
-    questionForm.options.push({ content: '' })
-  }
-}
-
-const removeOption = (index) => {
-  questionForm.options.splice(index, 1)
-  if (questionForm.correctAnswer >= index) {
-    questionForm.correctAnswer = Math.max(0, questionForm.correctAnswer - 1)
-  }
-}
-
-// 导入相关
-const showImportDialog = () => {
-  importDialogVisible.value = true
-  importResult.value = null
-  previewResult.value = null
-  importProgress.value = 0
-  importedCount.value = 0
-}
-
-// 预览导入
-const handlePreview = async () => {
-  if (!selectedFile.value) {
-    ElMessage.warning('请先选择文件')
-    return
-  }
-
-  try {
-    const formData = new FormData()
-    // 使用原始文件确保稳定性
-    formData.append('file', selectedFile.value)
-    formData.append('format', importFormat.value)
-
-    const res = await questionBankAPI.previewImport(formData)
-    previewResult.value = res.data
-
-    if (res.data?.errors?.length > 0) {
-      ElMessage.warning(`预览发现问题：${res.data.errors.join('; ')}`)
-    } else {
-      ElMessage.success('预览完成，请确认导入内容')
-    }
-  } catch (err) {
-    console.error('预览失败:', err)
-    ElMessage.error(err.response?.data?.detail || '预览失败')
-    previewResult.value = null
-  }
-}
-
-// 重新预览
-const resetPreview = () => {
-  previewResult.value = null
-  selectedFile.value = null
-  if (uploadRef.value) {
-    uploadRef.value.clearFiles()
-  }
-}
-
-const handleFileChange = (file) => {
-  // 创建新的文件引用，避免浏览器缓存导致的上传问题
-  const newFile = new File([file.raw], file.name, { type: file.raw.type })
-  selectedFile.value = newFile
-  // 根据文件扩展名自动判断格式
-  const ext = file.name.split('.').pop().toLowerCase()
-  if (ext === 'docx') {
-    importFormat.value = 'word'
-  } else {
-    importFormat.value = 'excel'
-  }
-}
-
-const downloadTemplate = () => {
-  ElMessage.success('正在下载导入模板')
-}
-
-const startImport = async () => {
-  importing.value = true
-  importProgress.value = 0
-  importedCount.value = 0
-
-  try {
-    // 文件上传导入（Excel 或 Word）
-    if (selectedFile.value) {
-      console.log('准备上传文件:', selectedFile.value, '格式:', importFormat.value)
-      const res = await questionBankAPI.importQuestions(
-        selectedFile.value,
-        importFormat.value,
-        importSubjectId.value
-      )
-      importing.value = false
-      importProgress.value = 100
-      importedCount.value = res.data?.success_count || 0
-      importResult.value = {
-        success: res.data?.success_count || 0,
-        failed: res.data?.fail_count || 0
-      }
-      if (res.data?.success_count > 0) {
-        ElMessage.success(`导入成功：${res.data.success_count} 题`)
-        importDialogVisible.value = false
-        previewResult.value = null
-        fetchQuestionList()
-      }
-      if (res.data?.errors?.length > 0) {
-        ElMessage.warning(`部分导入失败：${res.data.errors.slice(0, 3).join('; ')}`)
-      }
-    } else {
-      // 文本导入暂不支持
-      ElMessage.info('文本导入功能开发中')
-      importing.value = false
-    }
-  } catch (err) {
-    console.error('导入失败:', err)
-    ElMessage.error(err.response?.data?.detail || '导入失败')
-    importing.value = false
-  }
-}
-
-// 导出相关
-const showExportDialog = () => {
-  exportDialogVisible.value = true
-}
-
-const startExport = async () => {
-  try {
-    // 构建查询参数
-    const params = {
-      format: exportForm.format,
-    }
-
-    // 根据导出范围处理
-    if (exportForm.scope === 'selected') {
-      // 只导出选中的题目
-      if (selectedQuestions.value.length === 0) {
-        ElMessage.warning('请先选择要导出的题目')
-        return
-      }
-      params.question_ids = selectedQuestions.value.map(q => q.id).join(',')
-    } else if (exportForm.scope === 'filtered') {
-      // 导出筛选结果
-      if (filterForm.examTypeId) {
-        params.subject_id = filterForm.examTypeId
-      }
-      if (filterForm.questionType) {
-        const typeMap = { 'single': 'single_choice', 'multiple': 'multiple_choice', 'judge': 'true_false', 'short_answer': 'essay' }
-        params.question_type = typeMap[filterForm.questionType] || filterForm.questionType
-      }
-      if (filterForm.difficulty !== null && filterForm.difficulty !== undefined) {
-        const diffMap = { 'easy': 2, 'medium': 3, 'hard': 5 }
-        params.difficulty = diffMap[filterForm.difficulty]
-      }
-    }
-    // 'all' scope 导出所有题目，不添加额外参数
-
-    ElMessage.info('正在导出题目，请稍候...')
-    exportDialogVisible.value = false
-
-    // 调用导出接口
-    const response = await adminAPI.exportQuestions(params)
-
-    // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-
-    // 根据格式设置文件名
-    const ext = exportForm.format === 'excel' ? 'xlsx' : exportForm.format
-    const filename = `题目导出_${new Date().toISOString().slice(0, 10)}.${ext}`
-    link.download = filename
-
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-
-    ElMessage.success('导出成功')
-  } catch (error) {
-    console.error('导出失败:', error)
-    ElMessage.error('导出失败，请稍后重试')
-  }
-}
-
-// 工具函数
-const getTypeName = (type) => {
-  const map = {
-    single: '单选题',
-    single_choice: '单选题',
-    multiple: '多选题',
-    multiple_choice: '多选题',
-    judge: '判断题',
-    true_false: '判断题',
-    short_answer: '简答题',
-    essay: '简答题'
-  }
-  return map[type] || type
-}
-
-const getDifficultyType = (difficulty) => {
-  // 支持数字和字符串
-  const map = {
-    1: 'success',
-    2: 'success',
-    3: 'warning',
-    4: 'danger',
-    5: 'danger',
-    easy: 'success',
-    medium: 'warning',
-    hard: 'danger'
-  }
-  return map[difficulty] || 'info'
-}
-
-const getDifficultyName = (difficulty) => {
-  // 支持数字和字符串
-  const map = {
-    1: '简单',
-    2: '简单',
-    3: '中等',
-    4: '困难',
-    5: '困难',
-    easy: '简单',
-    medium: '中等',
-    hard: '困难'
-  }
-  return map[difficulty] || difficulty
-}
-
-const getStatusName = (status) => {
-  const map = { 0: '禁用', 1: '启用', 2: '待启用' }
-  return map[status] ?? '启用'
-}
-
-const getStatusTagType = (status) => {
-  const map = { 0: 'danger', 1: 'success', 2: 'warning' }
-  return map[status] ?? 'info'
-}
-
-const getExamTypeName = (subjectId) => {
-  if (!subjectId) return ''
-  const id = Number(subjectId)
-  // questions.subject_id 对应 subjects.id，也对应 exam_types.subject_id
-  const subject = examTypeOptions.value.find(et => Number(et.subject_id) === id)
-  return subject ? subject.name : ''
-}
-
-const getCategoryName = (categoryId) => {
-  if (!categoryId) return ''
-  const id = Number(categoryId)
-  const category = categoryOptions.value.find(c => Number(c.id) === id)
-  return category ? category.name : ''
-}
-
-const formatDate = (date) => {
-  if (!date) return '-'
-  const d = new Date(date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  return content
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-}
-
-const isCorrectAnswer = (index) => {
-  if (!currentQuestion.value) return false
-  // 将 index (0,1,2,3) 转换为字母 (A,B,C,D)
-  const correctLetter = String.fromCharCode(65 + index)
-  const answer = currentQuestion.value.answer
-  if (Array.isArray(answer)) {
-    return answer.includes(correctLetter)
-  }
-  return answer === correctLetter
-}
-
-const formatAnswer = (answer) => {
-  if (Array.isArray(answer)) {
-    return answer.join(', ')
-  }
-  // answer 已经是字母字符串如 'A' 或 'A,B'
-  return answer || '-'
-}
 </script>
 
 <style scoped>
@@ -1219,21 +716,22 @@ const formatAnswer = (answer) => {
 
 .left-operations {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   align-items: center;
-}
-
-.search-input {
-  width: 160px;
-}
-
-.filter-select {
-  width: 140px;
+  flex-wrap: wrap;
 }
 
 .right-operations {
   display: flex;
   gap: 12px;
+}
+
+.search-input {
+  width: 200px;
+}
+
+.filter-select {
+  width: 150px;
 }
 
 .table-container {
@@ -1408,5 +906,48 @@ const formatAnswer = (answer) => {
 
 .text-format-tip {
   margin-top: 16px;
+}
+
+.similarity-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.similarity-summary span:last-child {
+  font-weight: 600;
+}
+
+.similarity-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+}
+
+.similarity-config {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.similarity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.similarity-id {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

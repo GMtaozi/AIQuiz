@@ -175,6 +175,17 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+// 全局表格优化：增加单元格内边距，提升可读性
+.el-table {
+  .el-table__body-wrapper,
+  .el-table__header-wrapper {
+    .el-table__body td,
+    .el-table__header th {
+      padding: 12px 0;
+    }
+  }
+}
+
 // 工具类
 .text-primary { color: $text-primary !important; }
 .text-regular { color: $text-regular !important; }

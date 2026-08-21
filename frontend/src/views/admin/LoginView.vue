@@ -372,8 +372,7 @@ onMounted(() => { mounted.value = true })
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
-
+/* 评估 P2-14：移除 Google Fonts 引入（国内不可达 + 规范使用系统字体栈） */
 * { box-sizing: border-box; }
 
 .login-page {

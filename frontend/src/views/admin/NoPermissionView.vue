@@ -32,7 +32,8 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* 评估 P2-14：原紫色渐变违反 DESIGN.md「Don't use purple gradient」，改为规范浅灰底 */
+  background: #F5F7FA;
 }
 
 .no-permission-card {

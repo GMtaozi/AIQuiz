@@ -23,7 +23,7 @@
       <!-- 筛选工具栏 -->
       <div class="filter-toolbar">
         <div class="filter-row">
-          <el-select v-model="filterForm.categoryId" placeholder="考试种类" clearable style="width: 140px" @change="handleCategoryChange">
+          <el-select v-model="filterForm.categoryId" placeholder="考试种类" clearable style="width: 150px" @change="handleCategoryChange">
             <el-option
               v-for="cat in categories"
               :key="cat.id"
@@ -39,13 +39,13 @@
               :value="et.id"
             />
           </el-select>
-          <el-select v-model="filterForm.questionType" placeholder="题型" clearable style="width: 120px">
+          <el-select v-model="filterForm.questionType" placeholder="题型" clearable style="width: 130px">
             <el-option label="单选题" value="choice" />
             <el-option label="多选题" value="multiple" />
             <el-option label="简答题" value="short_answer" />
             <el-option label="判断题" value="true_false" />
           </el-select>
-          <el-select v-model="filterForm.difficulty" placeholder="难度" clearable style="width: 100px">
+          <el-select v-model="filterForm.difficulty" placeholder="难度" clearable style="width: 110px">
             <el-option label="简单" value="easy" />
             <el-option label="中等" value="medium" />
             <el-option label="困难" value="hard" />
@@ -61,13 +61,13 @@
             range-separator="至"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
-            style="width: 240px"
+            style="width: 260px"
             @change="handleDateRangeChange"
           />
           <el-input
             v-model="filterForm.keyword"
             placeholder="搜索题目内容"
-            style="width: 200px"
+            style="width: 220px"
             clearable
             @keyup.enter="handleSearch"
           >
@@ -183,12 +183,14 @@
       </div>
 
       <!-- 题目列表表格 (非逐题模式) -->
+      <el-empty v-if="!reviewMode && !loading && questions.length === 0" description="暂无待审核题目" :image-size="80" />
       <el-table
         v-if="!reviewMode"
         ref="tableRef"
         :data="questions"
         stripe
         style="width: 100%; margin-top: 16px"
+        v-loading="loading"
         @selection-change="handleSelectionChange"
         :row-class-name="tableRowClassName"
         @row-click="handleRowClick"
@@ -292,12 +294,13 @@
           <p v-if="currentQuestion.rejectReason">驳回原因：{{ currentQuestion.rejectReason }}</p>
           <p v-if="currentQuestion.auditTime">审核时间：{{ currentQuestion.auditTime }}</p>
         </div>
-
-        <div class="detail-actions" v-if="currentQuestion.status === 'pending'">
+      </div>
+      <template #footer>
+        <div v-if="currentQuestion && currentQuestion.status === 'pending'" class="detail-actions">
           <el-button type="success" @click="approveQuestion(currentQuestion)">通过</el-button>
           <el-button type="danger" @click="openRejectDialog(currentQuestion)">驳回</el-button>
         </div>
-      </div>
+      </template>
     </el-drawer>
 
     <!-- 驳回对话框 -->
@@ -340,6 +343,7 @@ import { Search, Refresh, Check, Close, Download, MagicStick, Edit, DArrowLeft, 
 const tableRef = ref(null)
 const questions = ref([])
 const selectedQuestions = ref([])
+const loading = ref(false)
 const detailDrawerVisible = ref(false)
 const rejectDialogVisible = ref(false)
 const currentQuestion = ref(null)
@@ -464,6 +468,7 @@ const toggleReviewMode = () => {
 }
 
 const fetchQuestions = async () => {
+  loading.value = true
   try {
     // 过滤掉 undefined 和空字符串的参数
     const buildParams = () => {
@@ -500,7 +505,7 @@ const fetchQuestions = async () => {
         type: q.question_type === 'single_choice' ? 'choice' :
               q.question_type === 'multiple_choice' ? 'multiple' :
               q.question_type === 'true_false' ? 'true_false' :
-              q.question_type === 'short_answer' ? 'short_answer' : 'choice',
+              q.question_type === 'essay' ? 'short_answer' : 'choice',
         difficulty: q.difficulty === 1 || q.difficulty === 2 ? 'easy' :
                    q.difficulty === 3 ? 'medium' :
                    q.difficulty === 4 || q.difficulty === 5 ? 'hard' : 'medium',
@@ -526,6 +531,8 @@ const fetchQuestions = async () => {
   } catch (error) {
     console.error('获取题目列表失败:', error)
     ElMessage.error('获取题目列表失败')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -743,12 +750,12 @@ const nextQuestion = async () => {
 .filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 14px;
   align-items: center;
 }
 
 .filter-summary {
-  margin-top: 10px;
+  margin-top: 12px;
   color: #666;
   font-size: 14px;
 }
@@ -782,13 +789,13 @@ const nextQuestion = async () => {
 
 .action-buttons {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   flex-wrap: nowrap;
 }
 
 .action-buttons .el-button {
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 .content-preview {

@@ -31,7 +31,14 @@ function xorDecrypt(encoded, key) {
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(xorDecrypt(localStorage.getItem('token') || '', ENCRYPTION_KEY))
-  const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+  // 评估修复：localStorage 数据损坏时 JSON.parse 抛异常会导致整页白屏，加 try/catch 兜底
+  let cachedUser = null
+  try {
+    cachedUser = JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    cachedUser = null
+  }
+  const user = ref(cachedUser)
 
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 1)
@@ -69,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('token', xorEncrypt(token.value, ENCRYPTION_KEY))
       return { success: true }
     } catch (error) {
-      return { success: false, message: error.response?.data?.detail || '登录失败' }
+      return { success: false, message: error.response?.data?.message || error.response?.data?.detail || '登录失败' }
     }
   }
 
@@ -81,9 +88,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function getDefaultPermissions(role) {
+    // 评估 P0-7：单一默认权限来源（与菜单/路由 meta.permission 对齐）
     const defaults = {
-      1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge', 'settings', 'user-permission'],
-      2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge'],
+      1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases', 'settings', 'user-permission'],
+      2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases'],
       3: ['audit', 'question-bank']
     }
     return defaults[role] || defaults[3]

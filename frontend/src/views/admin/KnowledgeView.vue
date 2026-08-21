@@ -458,617 +458,95 @@ import {
   Search, Refresh, Folder, Document, Plus, Edit, Delete, UploadFilled, Loading
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
-import { knowledgeAPI, systemAPI } from '@/api'
+import { useKnowledge } from '@/composables/useKnowledge'
 
 const router = useRouter()
 
-// 树形结构数据
-const treeRef = ref(null)
-const knowledgeTreeData = ref([])
-const filteredTreeData = ref([])
-const treeSearchKeyword = ref('')
-const selectedKnowledge = ref(null)
-const relatedQuestions = ref([])
-
-// 弹窗状态
-const dialogVisible = ref(false)
-const importDialogVisible = ref(false)
-const isEdit = ref(false)
-const submitLoading = ref(false)
-
-// 右键菜单
-const contextMenuVisible = ref(false)
-const contextMenuX = ref(0)
-const contextMenuY = ref(0)
-const contextMenuNode = ref(null)
-
-// 导入相关
-const importMode = ref('file')
-const uploadRef = ref(null)
-const aiUploadRef = ref(null)
-const selectedFile = ref(null)
-const aiSelectedFile = ref(null)
-const aiAnalyzing = ref(false)
-const aiResult = ref(null)
-const aiImportForm = reactive({
-  parentId: null,
-  categoryId: null,
-  examTypeId: null
-})
-
-// 树形配置
-const treeProps = {
-  label: 'name',
-  children: 'children',
-  value: 'id'
-}
-
-// 知识点表单
-const knowledgeForm = reactive({
-  id: null,
-  name: '',
-  parentId: null,
-  categoryId: null,
-  examTypeId: null,
-  sortOrder: 0,
-  description: ''
-})
-
-// 表单校验
-const formRules = {
-  name: [{ required: true, message: '请输入知识点名称', trigger: 'blur' }]
-}
-
-// 考试类型选项
-const examTypeOptions = ref([])
-const examCategoryOptions = ref([])
-
-// 统计
-const totalKnowledgeCount = ref(0)
-const categoryCount = ref(0)
-const examTypeCount = ref(0)
-
-// 计算属性 - 仅知识点的树（用于弹窗选择父节点）
-const knowledgeOnlyTreeData = computed(() => {
-  return extractKnowledgeNodes(knowledgeTreeData.value)
-})
-
-const filteredFormExamTypeOptions = computed(() => {
-  if (!knowledgeForm.categoryId) return examTypeOptions.value
-  return examTypeOptions.value.filter(et => et.category_id === knowledgeForm.categoryId)
-})
-
-const filteredAIExamTypeOptions = computed(() => {
-  if (!aiImportForm.categoryId) return examTypeOptions.value
-  return examTypeOptions.value.filter(et => et.category_id === aiImportForm.categoryId)
-})
-
-// 从层级树中提取纯知识点节点（去掉 category/exam_type 虚拟节点）
-const extractKnowledgeNodes = (nodes) => {
-  const result = []
-  for (const node of nodes) {
-    if (node.node_type === 'category' || node.node_type === 'exam_type') {
-      // 递归到子节点
-      if (node.children) {
-        result.push(...extractKnowledgeNodes(node.children))
-      }
-    } else {
-      // 知识点节点，保留并递归子知识点
-      const cloned = { ...node }
-      if (cloned.children) {
-        cloned.children = extractKnowledgeNodes(cloned.children)
-      }
-      result.push(cloned)
-    }
-  }
-  return result
-}
-
-// 默认展开的节点 key
-const defaultExpandedKeys = computed(() => {
-  const keys = []
-  const collectKeys = (nodes) => {
-    for (const node of nodes) {
-      if (node.node_type === 'category' || node.node_type === 'exam_type') {
-        keys.push(node.id)
-      }
-      if (node.children) collectKeys(node.children)
-    }
-  }
-  collectKeys(knowledgeTreeData.value)
-  return keys
-})
-
-const handleFormCategoryChange = () => {
-  knowledgeForm.examTypeId = null
-}
-
-const fetchExamTypesAndCourses = async () => {
-  try {
-    const categoryRes = await systemAPI.getExamCategories()
-    examCategoryOptions.value = categoryRes.data?.items || []
-    const examRes = await systemAPI.getExamTypes()
-    examTypeOptions.value = examRes.data?.items || []
-  } catch (e) {
-    console.error('获取考试种类/考试类型失败:', e)
-  }
-}
-
-// 拖拽控制
-const allowDrop = (draggingNode, dropNode, type) => {
-  // 只允许知识点节点拖拽，不允许拖到 category/exam_type 内部
-  if (draggingNode.data.node_type) return false
-  if (dropNode.data.node_type === 'category') return false
-  return type !== 'inner'
-}
-
-const allowDrag = (draggingNode) => {
-  // category 和 exam_type 节点不可拖拽
-  return !draggingNode.data.node_type
-}
-
-// 生命周期
-onMounted(() => {
-  fetchKnowledgeTree()
-  fetchExamTypesAndCourses()
-  document.addEventListener('click', hideContextMenu)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', hideContextMenu)
-})
-
-// 获取层级知识树
-const fetchKnowledgeTree = async () => {
-  try {
-    const response = await knowledgeAPI.getHierarchyTrees()
-    knowledgeTreeData.value = response.data?.trees || response.data || []
-    filteredTreeData.value = knowledgeTreeData.value
-    calculateStats()
-  } catch (error) {
-    console.error('获取知识树失败:', error)
-    knowledgeTreeData.value = []
-    filteredTreeData.value = []
-    calculateStats()
-  }
-}
-
-// 统计知识节点后代中的知识点数量
-const countDescendantKnowledge = (node) => {
-  if (!node) return 0
-  if (!node.node_type) return 1
-  let count = 0
-  if (node.children) {
-    for (const child of node.children) {
-      count += countDescendantKnowledge(child)
-    }
-  }
-  return count
-}
-
-// 计算统计数据
-const calculateStats = () => {
-  // 递归统计
-  let kpCount = 0
-  let catCount = 0
-  let etCount = 0
-  const collectStats = (nodes) => {
-    for (const node of nodes) {
-      if (node.node_type === 'category') {
-        catCount++
-      } else if (node.node_type === 'exam_type') {
-        etCount++
-      } else {
-        kpCount++
-      }
-      if (node.children) collectStats(node.children)
-    }
-  }
-  collectStats(knowledgeTreeData.value)
-  totalKnowledgeCount.value = kpCount
-  categoryCount.value = catCount
-  examTypeCount.value = etCount
-}
-
-// 树搜索 - 只匹配知识点节点
-const handleTreeSearch = () => {
-  if (!treeSearchKeyword.value) {
-    filteredTreeData.value = knowledgeTreeData.value
-    return
-  }
-  const keyword = treeSearchKeyword.value.toLowerCase()
-  const filterTree = (nodes) => {
-    const result = []
-    for (const node of nodes) {
-      if (node.node_type === 'category' || node.node_type === 'exam_type') {
-        // 虚拟节点保留，但过滤子节点
-        const filteredChildren = filterTree(node.children || [])
-        if (filteredChildren.length > 0) {
-          result.push({ ...node, children: filteredChildren })
-        }
-      } else {
-        // 知识点节点，按名称匹配
-        if (node.name.toLowerCase().includes(keyword)) {
-          result.push(node)
-        } else if (node.children) {
-          const filteredChildren = filterTree(node.children)
-          if (filteredChildren.length > 0) {
-            result.push({ ...node, children: filteredChildren })
-          }
-        }
-      }
-    }
-    return result
-  }
-  filteredTreeData.value = filterTree(knowledgeTreeData.value)
-}
-
-// 节点点击
-const handleNodeClick = async (data) => {
-  selectedKnowledge.value = { ...data }
-  // 如果是知识点节点，查找额外信息
-  if (!data.node_type) {
-    const findParentName = (nodes, targetId, parentName = null) => {
-      for (const node of nodes) {
-        if (node.id === targetId && !node.node_type) {
-          return parentName
-        }
-        if (node.children) {
-          const found = findParentName(node.children, targetId, node.node_type ? null : node.name)
-          if (found !== undefined) return found
-        }
-      }
-      return undefined
-    }
-    selectedKnowledge.value.parentName = findParentName(knowledgeTreeData.value, data.id)
-
-    // 查找所属种类和科目名称
-    const findCategoryExamType = (nodes, targetId, catName = '', etName = '') => {
-      for (const node of nodes) {
-        if (node.node_type === 'category') {
-          if (node.children) {
-            const found = findCategoryExamType(node.children, targetId, node.name, etName)
-            if (found) return found
-          }
-        } else if (node.node_type === 'exam_type') {
-          if (node.children) {
-            const found = findCategoryExamType(node.children, targetId, catName, node.name)
-            if (found) return found
-          }
-        } else if (node.id === targetId) {
-          return { categoryName: catName, examTypeName: etName }
-        }
-      }
-      return null
-    }
-    const info = findCategoryExamType(knowledgeTreeData.value, data.id)
-    if (info) {
-      selectedKnowledge.value.categoryName = info.categoryName
-      selectedKnowledge.value.examTypeName = info.examTypeName
-    }
-
-    // 获取相关题目
-    try {
-      const response = await knowledgeAPI.getNodesByCategory(data.id)
-      relatedQuestions.value = response.data || []
-    } catch (error) {
-      relatedQuestions.value = []
-    }
-  }
-}
-
-// 右键菜单
-const handleNodeContextMenu = (event, data) => {
-  event.preventDefault()
-  contextMenuNode.value = data
-  contextMenuX.value = event.clientX
-  contextMenuY.value = event.clientY
-  contextMenuVisible.value = true
-}
-
-const hideContextMenu = () => {
-  contextMenuVisible.value = false
-}
-
-// 拖拽
-const handleDragStart = (node) => {
-  console.log('Drag started:', node.data.name)
-}
-
-const handleDragEnd = async (node, dropNode, type) => {
-  if (type === 'before' || type === 'after') {
-    ElMessage.success('节点顺序已更新')
-  }
-}
-
-// 新建知识点
-const openCreateDialog = () => {
-  isEdit.value = false
-  resetForm()
-  dialogVisible.value = true
-}
-
-// 在考试科目下新增知识点
-const handleAddKnowledgeUnderExamType = () => {
-  hideContextMenu()
-  if (contextMenuNode.value) {
-    isEdit.value = false
-    resetForm()
-    // 根据选中的 exam_type 节点自动设置种类和科目
-    const etNode = contextMenuNode.value
-    if (etNode.exam_type_id) {
-      knowledgeForm.examTypeId = etNode.exam_type_id
-      // 查找对应的 categoryId
-      const etObj = examTypeOptions.value.find(e => e.id === etNode.exam_type_id)
-      if (etObj?.category_id) {
-        knowledgeForm.categoryId = etObj.category_id
-      }
-    }
-    dialogVisible.value = true
-  }
-}
-
-// 编辑知识点
-const openEditDialog = () => {
-  if (!selectedKnowledge.value) return
-  isEdit.value = true
-  Object.assign(knowledgeForm, {
-    id: selectedKnowledge.value.id,
-    name: selectedKnowledge.value.name,
-    parentId: selectedKnowledge.value.parent_id || selectedKnowledge.value.parentId || null,
-    categoryId: selectedKnowledge.value.categoryId || null,
-    examTypeId: selectedKnowledge.value.examTypeId || null,
-    sortOrder: selectedKnowledge.value.sortOrder || selectedKnowledge.value.order || 0,
-    description: selectedKnowledge.value.description || ''
-  })
-  dialogVisible.value = true
-}
-
-// 重置表单
-const resetForm = () => {
-  knowledgeForm.id = null
-  knowledgeForm.name = ''
-  knowledgeForm.parentId = null
-  knowledgeForm.categoryId = null
-  knowledgeForm.examTypeId = null
-  knowledgeForm.sortOrder = 0
-  knowledgeForm.description = ''
-}
-
-// 提交表单
-const submitForm = async () => {
-  try {
-    submitLoading.value = true
-    if (isEdit.value) {
-      await knowledgeAPI.updateNode(knowledgeForm.id, knowledgeForm)
-      ElMessage.success('更新成功')
-    } else {
-      await knowledgeAPI.createNode(knowledgeForm)
-      ElMessage.success('创建成功')
-    }
-    dialogVisible.value = false
-    fetchKnowledgeTree()
-  } catch (error) {
-    ElMessage.error('操作失败')
-  } finally {
-    submitLoading.value = false
-  }
-}
-
-// 删除知识点
-const deleteKnowledge = () => {
-  if (!selectedKnowledge.value) return
-  ElMessageBox.confirm(
-    `确定要删除知识点"${selectedKnowledge.value.name}"吗？${
-      selectedKnowledge.value.children?.length
-        ? '（该知识点下有子节点，将一并删除）'
-        : ''
-    }`,
-    '提示',
-    { type: 'warning' }
-  ).then(async () => {
-    try {
-      await knowledgeAPI.deleteNode(selectedKnowledge.value.id)
-      ElMessage.success('删除成功')
-      selectedKnowledge.value = null
-      fetchKnowledgeTree()
-    } catch (error) {
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-// 右键菜单操作
-const handleAddChild = () => {
-  hideContextMenu()
-  if (contextMenuNode.value) {
-    knowledgeForm.parentId = contextMenuNode.value.id
-    isEdit.value = false
-    resetForm()
-    knowledgeForm.parentId = contextMenuNode.value.id
-    dialogVisible.value = true
-  }
-}
-
-const handleRename = () => {
-  hideContextMenu()
-  if (contextMenuNode.value) {
-    selectedKnowledge.value = contextMenuNode.value
-    openEditDialog()
-  }
-}
-
-const handleDelete = () => {
-  hideContextMenu()
-  if (contextMenuNode.value) {
-    selectedKnowledge.value = contextMenuNode.value
-    deleteKnowledge()
-  }
-}
-
-// 导入
-const handleImport = () => {
-  importMode.value = 'file'
-  importDialogVisible.value = true
-  resetImportState()
-}
-
-const resetImportState = () => {
-  selectedFile.value = null
-  aiSelectedFile.value = null
-  aiResult.value = null
-  aiAnalyzing.value = false
-  if (uploadRef.value) uploadRef.value.clearFiles()
-  if (aiUploadRef.value) aiUploadRef.value.clearFiles()
-}
-
-const closeImportDialog = () => {
-  importDialogVisible.value = false
-  resetImportState()
-}
-
-const handleFileChange = (file) => {
-  selectedFile.value = file.raw
-}
-
-const handleAIFileChange = (file) => {
-  aiSelectedFile.value = file.raw
-  // 上传文件后自动触发规则解析（毫秒级，无需用户额外操作）
-  autoRuleAnalyze()
-}
-
-const autoRuleAnalyze = async () => {
-  if (!aiSelectedFile.value) return
-
-  aiAnalyzing.value = false
-  aiResult.value = null
-
-  const formData = new FormData()
-  formData.append('file', aiSelectedFile.value)
-  formData.append('parent_id', aiImportForm.parentId || '')
-  formData.append('category', typeof aiImportForm.categoryId === 'string' ? aiImportForm.categoryId : 'default')
-  formData.append('category_id', aiImportForm.categoryId || '')
-
-  try {
-    // 第一步：规则解析（毫秒级，先展示结果让用户看到）
-    const response = await knowledgeAPI.ruleAnalyze(formData)
-    aiResult.value = response.data
-
-    if (response.data.success) {
-      ElMessage.success(`结构解析完成，提取 ${response.data.total_points} 个知识点，正在AI深度归纳...`)
-      // 第二步：自动触发AI深度归纳（后台进行，完成后自动替换结果）
-      startAIAnalysis()
-    } else {
-      ElMessage.error(response.data.error || '解析失败')
-    }
-  } catch (error) {
-    console.error('规则解析失败:', error)
-    ElMessage.error('文档解析失败，请重试')
-  }
-}
-
-const startAIAnalysis = async () => {
-  if (!aiSelectedFile.value) {
-    ElMessage.warning('请先选择文件')
-    return
-  }
-
-  aiAnalyzing.value = true
-  // 保留规则解析结果作为参考，不清空（AI分析失败时可回退）
-
-  const formData = new FormData()
-  formData.append('file', aiSelectedFile.value)
-  formData.append('parent_id', aiImportForm.parentId || '')
-  formData.append('category', typeof aiImportForm.categoryId === 'string' ? aiImportForm.categoryId : 'default')
-  formData.append('category_id', aiImportForm.categoryId || '')
-
-  console.log('开始AI深度分析 - parentId:', aiImportForm.parentId, 'categoryId:', aiImportForm.categoryId)
-
-  try {
-    const response = await knowledgeAPI.aiAnalyze(formData)
-    aiResult.value = response.data
-    console.log('AI分析完成 - parent_id in result:', response.data.parent_id)
-
-    if (response.data.success) {
-      ElMessage.success(response.data.message || 'AI 深度分析完成')
-    } else {
-      ElMessage.error(response.data.error || 'AI 分析失败')
-    }
-  } catch (error) {
-    console.error('AI 分析失败:', error)
-    ElMessage.error(error.message || 'AI 分析失败，请重试')
-  } finally {
-    aiAnalyzing.value = false
-  }
-}
-
-const confirmAIImport = async () => {
-  if (!aiResult.value || !aiResult.value.knowledge_points) {
-    ElMessage.warning('没有可导入的知识点')
-    return
-  }
-
-  console.log('确认导入 - knowledge_points count:', aiResult.value.knowledge_points.length, 'parent_id:', aiResult.value.parent_id, 'aiImportForm.parentId:', aiImportForm.parentId, 'document_name:', aiResult.value.document_name)
-
-  try {
-    const response = await knowledgeAPI.aiImport(
-      aiResult.value.knowledge_points,
-      aiImportForm.categoryId,
-      aiImportForm.examTypeId,
-      aiResult.value.parent_id || aiImportForm.parentId,
-      aiResult.value.document_name  // 传递文档名，用于创建文档节点
-    )
-
-    if (response.data.success) {
-      ElMessage.success(response.data.message || `成功导入 ${response.data.created_count} 个知识点`)
-      closeImportDialog()
-      fetchKnowledgeTree()
-    } else {
-      ElMessage.error(response.data.detail || '导入失败')
-    }
-  } catch (error) {
-    console.error('导入失败:', error)
-    ElMessage.error(error.message || '导入失败，请重试')
-  }
-}
-
-const confirmImport = () => {
-  ElMessage.success('导入成功')
-  importDialogVisible.value = false
-  fetchKnowledgeTree()
-}
-
-// 导出
-const handleExport = () => {
-  ElMessage.success('正在导出知识点，请稍候...')
-}
-
-// 批量文档导入 - 跳转到专用页面
-const handleBatchImport = () => {
-  router.push({ name: 'BatchKnowledge' })
-}
-
-// 查看题目
-const viewQuestion = (question) => {
-  ElMessage.info(`查看题目 ${question.id}`)
-}
-
-const viewAllQuestions = () => {
-  ElMessage.info('跳转到题目列表')
-}
-
-// 工具函数
-const formatDate = (date) => {
-  if (!date) return '-'
-  const d = new Date(date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-const truncateContent = (content) => {
-  if (!content) return ''
-  return content.length > 20 ? content.substring(0, 20) + '...' : content
-}
+const {
+  // Tree state
+  treeRef,
+  knowledgeTreeData,
+  filteredTreeData,
+  treeSearchKeyword,
+  selectedKnowledge,
+  relatedQuestions,
+  // Dialog state
+  dialogVisible,
+  importDialogVisible,
+  isEdit,
+  submitLoading,
+  // Context menu
+  contextMenuVisible,
+  contextMenuX,
+  contextMenuY,
+  contextMenuNode,
+  // Import state
+  importMode,
+  uploadRef,
+  aiUploadRef,
+  selectedFile,
+  aiSelectedFile,
+  aiAnalyzing,
+  aiResult,
+  aiImportForm,
+  // Tree config
+  treeProps,
+  // Form
+  knowledgeForm,
+  formRules,
+  // Options
+  examTypeOptions,
+  examCategoryOptions,
+  // Stats
+  totalKnowledgeCount,
+  categoryCount,
+  examTypeCount,
+  // Computed
+  knowledgeOnlyTreeData,
+  filteredFormExamTypeOptions,
+  filteredAIExamTypeOptions,
+  defaultExpandedKeys,
+  // Actions
+  handleFormCategoryChange,
+  fetchExamTypesAndCourses,
+  allowDrop,
+  allowDrag,
+  fetchKnowledgeTree,
+  calculateStats,
+  handleTreeSearch,
+  handleNodeClick,
+  handleNodeContextMenu,
+  hideContextMenu,
+  handleDragStart,
+  handleDragEnd,
+  openCreateDialog,
+  handleAddKnowledgeUnderExamType,
+  openEditDialog,
+  resetForm,
+  submitForm,
+  deleteKnowledge,
+  handleAddChild,
+  handleRename,
+  handleDelete,
+  handleImport,
+  resetImportState,
+  closeImportDialog,
+  handleFileChange,
+  handleAIFileChange,
+  autoRuleAnalyze,
+  startAIAnalysis,
+  confirmAIImport,
+  confirmImport,
+  handleExport,
+  handleBatchImport,
+  viewQuestion,
+  viewAllQuestions,
+  // Utilities
+  formatDate,
+  truncateContent
+} = useKnowledge()
 </script>
+
 
 <style scoped>
 .knowledge-view {

@@ -36,7 +36,7 @@
               <el-form-item label="系统公告">
                 <el-input
                   v-model="basicSettings.announcement"
-                  type="linkarea"
+                  type="textarea"
                   :rows="4"
                   placeholder="请输入系统公告内容"
                   style="width: 600px"
@@ -112,7 +112,7 @@
                 <span class="form-tip">自动从名称生成，也可手动修改</span>
               </el-form-item>
               <el-form-item label="描述">
-                <el-input v-model="examCategoryForm.description" type="linkarea" :rows="3" placeholder="请输入描述" />
+                <el-input v-model="examCategoryForm.description" type="textarea" :rows="3" placeholder="请输入描述" />
               </el-form-item>
               <el-form-item label="状态">
                 <el-switch v-model="examCategoryForm.status" :active-value="1" :inactive-value="0" />
@@ -223,7 +223,7 @@
                 </el-checkbox-group>
               </el-form-item>
               <el-form-item label="描述">
-                <el-input v-model="examTypeForm.description" type="linkarea" :rows="2" placeholder="请输入描述" />
+                <el-input v-model="examTypeForm.description" type="textarea" :rows="2" placeholder="请输入描述" />
               </el-form-item>
               <el-form-item label="状态">
                 <el-switch v-model="examTypeForm.status" :active-value="1" :inactive-value="0" />
@@ -290,7 +290,7 @@
               layout="total, sizes, prev, pager, next"
               @size-change="fetchUsers"
               @current-change="fetchUsers"
-              style="margin-top: 20px; link-align: right"
+              style="margin-top: 20px; text-align: right"
             />
           </el-card>
 
@@ -481,7 +481,7 @@
                   <el-form-item label="模板内容">
                     <el-input
                       v-model="notificationSettings.templates.review.content"
-                      type="linkarea"
+                      type="textarea"
                       :rows="4"
                       placeholder="尊敬的{username}，您的{type}已通过审核。"
                       style="width: 600px"
@@ -498,7 +498,7 @@
                   <el-form-item label="模板内容">
                     <el-input
                       v-model="notificationSettings.templates.score.content"
-                      type="linkarea"
+                      type="textarea"
                       :rows="4"
                       placeholder="尊敬的{username}，您的考试成绩已发布，总分{score}分。"
                       style="width: 600px"
@@ -571,7 +571,7 @@
               <el-form-item label="IP白名单">
                 <el-input
                   v-model="securitySettings.ipWhitelist"
-                  type="linkarea"
+                  type="textarea"
                   :rows="4"
                   placeholder="每行一个IP地址，支持CIDR格式，如：192.168.1.1&#10;10.0.0.0/8"
                   style="width: 400px"
@@ -666,34 +666,40 @@
 
             <el-form :model="rolePermissionsForm" label-width="100px" class="settings-form">
               <el-form-item label="管理员">
-                <el-checkbox-group v-model="rolePermissionsForm.role1">
-                  <el-checkbox value="ai-question">AI出题</el-checkbox>
-                  <el-checkbox value="audit">试题审核</el-checkbox>
-                  <el-checkbox value="auto-paper">智能组卷</el-checkbox>
-                  <el-checkbox value="question-bank">题库管理</el-checkbox>
-                  <el-checkbox value="paper-management">试卷管理</el-checkbox>
-                  <el-checkbox value="knowledge">知识点管理</el-checkbox>
-                  <el-checkbox value="settings">系统设置</el-checkbox>
-                  <el-checkbox value="user-permission">用户权限</el-checkbox>
-                </el-checkbox-group>
+                <div class="permission-grid">
+                  <el-checkbox-group v-model="rolePermissionsForm.role1">
+                    <el-checkbox value="ai-question">AI出题</el-checkbox>
+                    <el-checkbox value="audit">试题审核</el-checkbox>
+                    <el-checkbox value="auto-paper">智能组卷</el-checkbox>
+                    <el-checkbox value="question-bank">题库管理</el-checkbox>
+                    <el-checkbox value="paper-management">试卷管理</el-checkbox>
+                    <el-checkbox value="knowledge">知识点管理</el-checkbox>
+                    <el-checkbox value="settings">系统设置</el-checkbox>
+                    <el-checkbox value="user-permission">用户权限</el-checkbox>
+                  </el-checkbox-group>
+                </div>
               </el-form-item>
 
               <el-form-item label="题库编辑">
-                <el-checkbox-group v-model="rolePermissionsForm.role2">
-                  <el-checkbox value="ai-question">AI出题</el-checkbox>
-                  <el-checkbox value="audit">试题审核</el-checkbox>
-                  <el-checkbox value="auto-paper">智能组卷</el-checkbox>
-                  <el-checkbox value="question-bank">题库管理</el-checkbox>
-                  <el-checkbox value="paper-management">试卷管理</el-checkbox>
-                  <el-checkbox value="knowledge">知识点管理</el-checkbox>
-                </el-checkbox-group>
+                <div class="permission-grid">
+                  <el-checkbox-group v-model="rolePermissionsForm.role2">
+                    <el-checkbox value="ai-question">AI出题</el-checkbox>
+                    <el-checkbox value="audit">试题审核</el-checkbox>
+                    <el-checkbox value="auto-paper">智能组卷</el-checkbox>
+                    <el-checkbox value="question-bank">题库管理</el-checkbox>
+                    <el-checkbox value="paper-management">试卷管理</el-checkbox>
+                    <el-checkbox value="knowledge">知识点管理</el-checkbox>
+                  </el-checkbox-group>
+                </div>
               </el-form-item>
 
               <el-form-item label="审核员">
-                <el-checkbox-group v-model="rolePermissionsForm.role3">
-                  <el-checkbox value="audit">试题审核</el-checkbox>
-                  <el-checkbox value="question-bank">题库管理</el-checkbox>
-                </el-checkbox-group>
+                <div class="permission-grid">
+                  <el-checkbox-group v-model="rolePermissionsForm.role3">
+                    <el-checkbox value="audit">试题审核</el-checkbox>
+                    <el-checkbox value="question-bank">题库管理</el-checkbox>
+                  </el-checkbox-group>
+                </div>
               </el-form-item>
 
               <el-form-item>
@@ -715,13 +721,7 @@
 
               <el-form-item label="服务商">
                 <el-select v-model="aiSettings.provider" @change="handleProviderChange" placeholder="请选择服务商" style="width: 200px">
-                  <el-option label="OpenAI" value="openai" />
-                  <el-option label="Anthropic Claude" value="anthropic" />
-                  <el-option label="智谱AI (GLM)" value="zhipu" />
-                  <el-option label="阿里云 (Qwen)" value="qwen" />
-                  <el-option label="MiniMax" value="minimax" />
-                  <el-option label="百度文心一言" value="baidu" />
-                  <el-option label="Google Gemini" value="gemini" />
+                  <el-option v-for="p in providerList" :key="p.key" :label="p.name" :value="p.key" />
                 </el-select>
               </el-form-item>
 
@@ -732,13 +732,24 @@
               </el-form-item>
 
               <el-form-item label="API密钥">
-                <el-input
-                  v-model="aiSettings.apiKey"
-                  type="password"
-                  placeholder="请输入API密钥"
-                  show-password
-                  style="width: 400px"
-                />
+                <div style="display: flex; align-items: center; gap: 8px; width: 400px">
+                  <el-input
+                    v-model="aiSettings.apiKey"
+                    :type="apiKeyVisible ? 'text' : 'password'"
+                    :placeholder="apiKeyConfigured ? '****（已配置，可修改或清除）' : '请输入API密钥'"
+                    show-password
+                    style="flex: 1"
+                  />
+                  <el-button
+                    v-if="apiKeyConfigured"
+                    type="danger"
+                    :icon="Delete"
+                    circle
+                    size="small"
+                    title="清除API密钥"
+                    @click="clearApiKey"
+                  />
+                </div>
               </el-form-item>
 
               <el-form-item label="API地址">
@@ -770,813 +781,121 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Folder } from '@element-plus/icons-vue'
-import { systemAPI } from '@/api'
+import { Plus, Folder, Delete } from '@element-plus/icons-vue'
+import { useSystemSettings } from '@/composables/useSystemSettings'
 
-// 当前激活的标签页
-const activeTab = ref('basic')
-const notificationSubTab = ref('email')
+const {
+  // Tab state
+  activeTab,
+  notificationSubTab,
+  // Password reset
+  passwordResetRequests,
+  resetLoading,
+  resetDialogVisible,
+  resetForm,
+  loadPasswordResetRequests,
+  approveReset,
+  rejectReset,
+  // Basic settings
+  basicSettings,
+  handleLogoChange,
+  handleBgChange,
+  saveBasicSettings,
+  // Exam categories
+  examCategories,
+  examCategoryDialogVisible,
+  isEditExamCategory,
+  loading,
+  examCategoryFormRef,
+  examCategoryForm,
+  examCategoryRules,
+  fetchExamCategories,
+  showExamCategoryDialog,
+  submitExamCategory,
+  deleteExamCategory,
+  getCategoryName,
+  generateCategoryCode,
+  generateCode,
+  // Exam types
+  examTypes,
+  examTypeDialogVisible,
+  isEditExamType,
+  examTypeFormRef,
+  examTypeForm,
+  examTypeRules,
+  groupedExamTypes,
+  fetchExamTypes,
+  showExamTypeDialog,
+  submitExamType,
+  deleteExamType,
+  generateExamTypeCode,
+  // Subjects
+  subjects,
+  getQuestionTypeName,
+  // Users
+  users,
+  userPagination,
+  userDialogVisible,
+  roleDialogVisible,
+  isEditUser,
+  userFormRef,
+  currentUser,
+  newRole,
+  userForm,
+  userRules,
+  fetchUsers,
+  showUserDialog,
+  submitUser,
+  resetUserPassword,
+  changeUserRole,
+  submitRoleChange,
+  toggleUserStatus,
+  getRoleName,
+  getRoleTagType,
+  // Exam rules
+  examRules,
+  saveExamRules,
+  // Notification settings
+  notificationSettings,
+  saveEmailSettings,
+  saveSmsSettings,
+  saveTemplates,
+  testEmailNotification,
+  testSmsNotification,
+  // Security settings
+  securitySettings,
+  saveSecuritySettings,
+  // AI settings
+  AI_PROVIDER_MODELS,
+  aiSettings,
+  currentProviderModels,
+  handleProviderChange,
+  loadAiProviders,
+  providerList,
+  saveAiSettings,
+  testAiConnection,
+  apiKeyVisible,
+  apiKeyConfigured,
+  clearApiKey,
+  // Role permissions
+  rolePermissionsForm,
+  loadRolePermissions,
+  saveRolePermissions,
+  // Initialization
+  initializeSystemSettings,
+  // Password reset actions
+  showResetDialog,
+  submitPasswordReset,
+  deleteResetRequest,
+  formatDateTime
+} = useSystemSettings()
 
-// ============ 密码重置申请 ============
-const passwordResetRequests = ref([])
-const resetLoading = ref(false)
-const resetDialogVisible = ref(false)
-const resetForm = reactive({
-  requestId: null,
-  username: '',
-  newPassword: ''
-})
-
-// ============ 1. 基础设置 ============
-const basicSettings = reactive({
-  systemName: '智题 AIQuiz',
-  logoUrl: '',
-  announcement: '欢迎使用智题 AIQuiz，祝您工作顺利！',
-  loginBgUrl: ''
-})
-
-const handleLogoChange = (file) => {
-  const url = URL.createObjectURL(file.raw)
-  basicSettings.logoUrl = url
-}
-
-const handleBgChange = (file) => {
-  const url = URL.createObjectURL(file.raw)
-  basicSettings.loginBgUrl = url
-}
-
-const saveBasicSettings = () => {
-  ElMessage.success('基础设置保存成功')
-}
-
-// ============ 2. 考试种类管理 ============
-const examCategories = ref([])
-
-const examCategoryDialogVisible = ref(false)
-const isEditExamCategory = ref(false)
-const loading = ref(false)
-const examCategoryFormRef = ref(null)
-
-const examCategoryForm = reactive({
-  id: null,
-  name: '',
-  code: '',
-  description: '',
-  status: 1
-})
-
-const examCategoryRules = {
-  name: [{ required: true, message: '请输入种类名称', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入种类代码', trigger: 'blur' }]
-}
-
-// 获取考试种类列表
-const fetchExamCategories = async () => {
-  try {
-    const res = await systemAPI.getExamCategories()
-    examCategories.value = res.data?.items || []
-  } catch (e) {
-    console.error('获取考试种类失败:', e)
-  }
-}
-
-const showExamCategoryDialog = (row = null) => {
-  if (row) {
-    isEditExamCategory.value = true
-    Object.assign(examCategoryForm, {
-      id: row.id,
-      name: row.name,
-      code: row.code,
-      description: row.description || '',
-      status: row.status
-    })
-  } else {
-    isEditExamCategory.value = false
-    Object.assign(examCategoryForm, {
-      id: null,
-      name: '',
-      code: '',
-      description: '',
-      status: 1
-    })
-  }
-  examCategoryDialogVisible.value = true
-}
-
-const submitExamCategory = async () => {
-  try {
-    await examCategoryFormRef.value.validate()
-    const data = {
-      name: examCategoryForm.name,
-      code: examCategoryForm.code,
-      description: examCategoryForm.description,
-      status: examCategoryForm.status
-    }
-    if (isEditExamCategory.value) {
-      await systemAPI.updateExamCategory(examCategoryForm.id, data)
-      ElMessage.success('考试种类更新成功')
-    } else {
-      await systemAPI.createExamCategory(data)
-      ElMessage.success('考试种类添加成功')
-    }
-    examCategoryDialogVisible.value = false
-    fetchExamCategories()
-  } catch (error) {
-    console.error('提交失败:', error)
-  }
-}
-
-const deleteExamCategory = (id) => {
-  ElMessageBox.confirm('确定要删除该考试种类吗？', '提示', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      await systemAPI.deleteExamCategory(id)
-      ElMessage.success('删除成功')
-      fetchExamCategories()
-    } catch (e) {
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-const getCategoryName = (categoryId) => {
-  const cat = examCategories.value.find(c => c.id === categoryId)
-  return cat ? cat.name : '-'
-}
-
-// 自动生成代码
-const generateCategoryCode = () => {
-  if (!isEditExamCategory.value && examCategoryForm.name) {
-    examCategoryForm.code = generateCode(examCategoryForm.name)
-  }
-}
-
-const generateExamTypeCode = () => {
-  if (!isEditExamType.value && examTypeForm.name) {
-    examTypeForm.code = generateCode(examTypeForm.name)
-  }
-}
-
-// 生成代码的辅助函数：将中文/英文名称转换为大写字母数字组合
-const generateCode = (name) => {
-  if (!name) return ''
-  // 移除非字母数字字符
-  let code = name.replace(/[^\w\u4e00-\u9fa5]/g, '')
-  // 如果是纯中文，转换为拼音首字母
-  if (/^[\u4e00-\u9fa5]+$/.test(name)) {
-    code = name.split('').map(char => charToPinyin(char)).filter(Boolean).join('')
-  } else {
-    // 英文混合，只保留字母数字
-    code = code.replace(/[^\w]/g, '').toUpperCase()
-  }
-  return code || name.toUpperCase().replace(/[^\w]/g, '')
-}
-
-// 汉字转拼音首字母（扩展映射表）
-const charToPinyin = (char) => {
-  const pinyinMap = {
-    // 考试种类相关
-    '软': 'R', '考': 'K', '司': 'S', '法': 'F', '鉴': 'J', '定': 'D',
-    '司': 'S', '法': 'F', '鉴': 'J', '定': 'D', '教': 'J', '育': 'Y',
-    // 考试科目相关
-    '网': 'W', '络': 'L', '管': 'G', '理': 'L', '员': 'Y', '工': 'G',
-    '程': 'C', '师': 'S', '规': 'G', '划': 'H', '设': 'S', '计': 'J',
-    '基': 'J', '础': 'C', '专': 'Z', '业': 'Y', '初': 'C', '级': 'J',
-    '中': 'Z', '高': 'G', '律': 'L', '法': 'F', '规': 'G', '则': 'Z',
-    '度': 'D', '理': 'L', '论': 'L', '实': 'S', '务': 'W', '鉴': 'J',
-    '别': 'B', '会': 'H', '计': 'K', '审': 'S', '计': 'J', '财': 'C',
-    '务': 'W', '税': 'S', '务': 'W', '银': 'Y', '行': 'H', '经': 'J',
-    '济': 'J', '贸': 'M', '易': 'Y', '保': 'B', '险': 'X', '金': 'J',
-    '融': 'R', '投': 'T', '资': 'Z', '房': 'F', '产': 'C', '筑': 'Z',
-    '医': 'Y', '疗': 'L', '卫': 'W', '生': 'S', '文': 'W', '化': 'H',
-    '教': 'J', '师': 'S', '资': 'Z', '源': 'Y', '人': 'R', '力': 'L',
-    '行': 'X', '政': 'X', '公': 'G', '共': 'G', '安': 'A', '全': 'Q',
-    '质': 'Z', '量': 'L', '检': 'J', '测': 'C', '食': 'S', '品': 'P',
-    '环': 'H', '境': 'J', '化': 'H', '电': 'D', '子': 'Z', '商': 'S',
-    '务': 'W', '物': 'W', '流': 'L', '输': 'S', '运': 'Y', '园': 'Y',
-    '林': 'L', '农': 'N', '业': 'Y', '机': 'J', '械': 'X', '电': 'D',
-    '力': 'L', '水': 'S', '利': 'L', '铁': 'T', '路': 'L', '航': 'H',
-    '空': 'K', '航': 'H', '天': 'T', '信': 'X', '息': 'X', '通': 'T'
-  }
-  return pinyinMap[char] || ''
-}
-
-// ============ 3. 考试科目管理 ============
-// 按考试种类分组的考试科目
-const groupedExamTypes = computed(() => {
-  const groups = []
-  for (const cat of examCategories.value) {
-    const examTypesInCat = examTypes.value.filter(et => et.category_id === cat.id)
-    groups.push({
-      category: cat,
-      examTypes: examTypesInCat
-    })
-  }
-  return groups
-})
-
-const examTypes = ref([])
-
-const examTypeDialogVisible = ref(false)
-const isEditExamType = ref(false)
-const examTypeFormRef = ref(null)
-
-const examTypeForm = reactive({
-  id: null,
-  category_id: null,
-  name: '',
-  code: '',
-  level: '',
-  duration: 120,
-  total_score: 100,
-  passing_score: 60,
-  question_types: [],
-  description: '',
-  status: 1
-})
-
-const examTypeRules = {
-  category_id: [{ required: true, message: '请选择考试种类', trigger: 'change' }],
-  name: [{ required: true, message: '请输入科目名称', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入科目代码', trigger: 'blur' }]
-}
-
-// 获取考试科目列表
-const fetchExamTypes = async () => {
-  try {
-    const res = await systemAPI.getExamTypes()
-    examTypes.value = res.data?.items || []
-  } catch (e) {
-    console.error('获取考试科目失败:', e)
-  }
-}
-
-const showExamTypeDialog = (row = null) => {
-  if (row) {
-    isEditExamType.value = true
-    Object.assign(examTypeForm, {
-      id: row.id,
-      category_id: row.category_id,
-      name: row.name,
-      code: row.code,
-      level: row.level || '',
-      duration: row.duration,
-      total_score: row.total_score,
-      passing_score: row.passing_score,
-      question_types: row.question_types || [],
-      description: row.description || '',
-      status: row.status
-    })
-  } else {
-    isEditExamType.value = false
-    Object.assign(examTypeForm, {
-      id: null,
-      category_id: null,
-      name: '',
-      code: '',
-      level: '',
-      duration: 120,
-      total_score: 100,
-      passing_score: 60,
-      question_types: [],
-      description: '',
-      status: 1
-    })
-  }
-  examTypeDialogVisible.value = true
-}
-
-const submitExamType = async () => {
-  try {
-    await examTypeFormRef.value.validate()
-    const data = {
-      category_id: examTypeForm.category_id,
-      name: examTypeForm.name,
-      code: examTypeForm.code,
-      level: examTypeForm.level || null,
-      duration: examTypeForm.duration,
-      total_score: examTypeForm.total_score,
-      passing_score: examTypeForm.passing_score,
-      question_types: examTypeForm.question_types,
-      description: examTypeForm.description,
-      status: examTypeForm.status
-    }
-    if (isEditExamType.value) {
-      await systemAPI.updateExamType(examTypeForm.id, data)
-      ElMessage.success('考试科目更新成功')
-    } else {
-      await systemAPI.createExamType(data)
-      ElMessage.success('考试科目添加成功')
-    }
-    examTypeDialogVisible.value = false
-    fetchExamTypes()
-  } catch (error) {
-    console.error('提交失败:', error)
-  }
-}
-
-const deleteExamType = (id) => {
-  ElMessageBox.confirm('确定要删除该考试科目吗？', '提示', {
-    type: 'warning'
-  }).then(async () => {
-    try {
-      await systemAPI.deleteExamType(id)
-      ElMessage.success('删除成功')
-      fetchExamTypes()
-    } catch (e) {
-      ElMessage.error('删除失败')
-    }
-  }).catch(() => {})
-}
-
-// ============ 3. 科目管理 ============
-const subjects = ref([])
-
-const getQuestionTypeName = (type) => {
-  const map = {
-    choice: '单选题',
-    multiple: '多选题',
-    short_answer: '简答题',
-    judge: '判断题',
-    fill: '填空题'
-  }
-  return map[type] || type
-}
-
-// ============ 3. 用户管理 ============
-const users = ref([
-  { id: 1, username: 'admin', name: '管理员', role: 'admin', phone: '13800138000', email: 'admin@example.com', status: true, lastLogin: '2026-04-14 10:30:00', avatar: '' },
-  { id: 2, username: 'editor1', name: '题库编辑', role: 'editor', phone: '13800138001', email: 'editor@example.com', status: true, lastLogin: '2026-04-13 15:20:00', avatar: '' },
-  { id: 3, username: 'reviewer1', name: '审核员', role: 'reviewer', phone: '13800138002', email: 'reviewer@example.com', status: true, lastLogin: '2026-04-12 09:15:00', avatar: '' },
-  { id: 4, username: 'operator2', name: '题库编辑2', role: 'editor', phone: '13800138003', email: 'operator2@example.com', status: false, lastLogin: '2026-04-10 14:00:00', avatar: '' }
-])
-
-const userPagination = reactive({
-  page: 1,
-  pageSize: 10,
-  total: 4
-})
-
-const userDialogVisible = ref(false)
-const roleDialogVisible = ref(false)
-const isEditUser = ref(false)
-const userFormRef = ref(null)
-const currentUser = ref(null)
-const newRole = ref('')
-
-const userForm = reactive({
-  id: null,
-  username: '',
-  name: '',
-  role: 'editor',
-  phone: '',
-  email: '',
-  password: '',
-  status: true
-})
-
-const userRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
-  email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
-  ]
-}
-
-const fetchUsers = async () => {
-  try {
-    loading.value = true
-    const res = await systemAPI.getUsers()
-    users.value = (res.data?.items || res.data || []).map(u => ({
-      id: u.id,
-      username: u.username,
-      name: u.real_name || u.username,
-      role: u.role === 1 ? 'admin' : u.role === 2 ? 'editor' : 'reviewer',
-      phone: u.phone || '',
-      email: u.email,
-      status: u.status === 1,
-      lastLogin: u.last_login || ''
-    }))
-  } catch (err) {
-    console.error('获取用户列表失败:', err)
-    ElMessage.error('获取用户列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-const showUserDialog = (row = null) => {
-  if (row) {
-    isEditUser.value = true
-    Object.assign(userForm, row)
-    userForm.password = ''
-  } else {
-    isEditUser.value = false
-    Object.assign(userForm, {
-      id: null,
-      username: '',
-      name: '',
-      role: 'editor',
-      phone: '',
-      email: '',
-      password: '',
-      status: true
-    })
-  }
-  userDialogVisible.value = true
-}
-
-const submitUser = async () => {
-  try {
-    await userFormRef.value.validate()
-    // 将角色字符串转换为整数
-    const roleMap = { 'admin': 1, 'editor': 2, 'reviewer': 3 }
-    const userData = {
-      username: userForm.username,
-      real_name: userForm.name,
-      role: typeof userForm.role === 'string' ? (roleMap[userForm.role] || userForm.role) : userForm.role,
-      phone: userForm.phone || null,
-      email: userForm.email,
-      status: userForm.status ? 1 : 0
-    }
-    if (isEditUser.value) {
-      await systemAPI.updateUser(userForm.id, userData)
-      const index = users.value.findIndex(item => item.id === userForm.id)
-      if (index !== -1) {
-        users.value[index] = { ...users.value[index], ...userForm }
-      }
-      ElMessage.success('用户更新成功')
-    } else {
-      userData.password = userForm.password
-      const res = await systemAPI.createUser(userData)
-      users.value.push({ ...userForm, id: res.id, lastLogin: '', avatar: '' })
-      ElMessage.success('用户创建成功')
-    }
-    userDialogVisible.value = false
-  } catch (error) {
-    ElMessage.error(isEditUser.value ? '用户更新失败' : '用户创建失败')
-  }
-}
-
-const resetUserPassword = async (row) => {
-  try {
-    await ElMessageBox.confirm(`确定要重置用户"${row.name}"的密码吗？`, '提示', {
-      type: 'warning'
-    })
-    await systemAPI.resetPassword(row.id)
-    ElMessage.success('密码已重置为默认密码')
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('重置密码失败')
-    }
-  }
-}
-
-const changeUserRole = (row) => {
-  currentUser.value = row
-  newRole.value = row.role
-  roleDialogVisible.value = true
-}
-
-const submitRoleChange = async () => {
-  if (newRole.value) {
-    try {
-      const roleMap = { 'admin': 1, 'editor': 2, 'reviewer': 3 }
-      // 转换为整数：支持 'admin'/'editor'/'reviewer' 和 '1'/'2'/'3' 格式
-      let roleInt
-      if (typeof newRole.value === 'string') {
-        roleInt = roleMap[newRole.value]
-        if (roleInt === undefined) {
-          roleInt = parseInt(newRole.value, 10)
-        }
-      } else {
-        roleInt = newRole.value
-      }
-      await systemAPI.changeRole(currentUser.value.id, roleInt)
-      const user = users.value.find(item => item.id === currentUser.value.id)
-      if (user) {
-        user.role = newRole.value
-      }
-      ElMessage.success('角色切换成功')
-    } catch (error) {
-      ElMessage.error('角色切换失败')
-    }
-  }
-  roleDialogVisible.value = false
-}
-
-const toggleUserStatus = (row) => {
-  ElMessage.success(`用户"${row.name}"已${row.status ? '启用' : '禁用'}`)
-}
-
-const getRoleName = (role) => {
-  const map = {
-    admin: '管理员',
-    editor: '题库编辑',
-    reviewer: '审核员'
-  }
-  return map[role] || role
-}
-
-const getRoleTagType = (role) => {
-  const map = {
-    admin: 'warning',
-    editor: 'success',
-    reviewer: 'info'
-  }
-  return map[role] || 'info'
-}
-
-// ============ 4. 考试规则 ============
-const examRules = reactive({
-  randomQuestionOrder: true,
-  randomOptionOrder: true,
-  allowReviewAnswer: false,
-  maxScreenSwitch: 5,
-  passScoreRatio: 60,
-  scoreDisplay: ['score', 'correctRate']
-})
-
-const saveExamRules = () => {
-  ElMessage.success('考试规则保存成功')
-}
-
-// ============ 5. 通知设置 ============
-const notificationSettings = reactive({
-  email: {
-    enabled: true,
-    smtpHost: 'smtp.example.com',
-    smtpPort: 465,
-    fromEmail: 'noreply@example.com',
-    password: '',
-    useSSL: true
-  },
-  sms: {
-    enabled: false,
-    provider: 'aliyun',
-    accessKeyId: '',
-    accessKeySecret: '',
-    signName: ''
-  },
-  templates: {
-    review: {
-      title: '审核结果通知',
-      content: '尊敬的{username}，您的{type}已通过审核。'
-    },
-    score: {
-      title: '成绩发布通知',
-      content: '尊敬的{username}，您的考试成绩已发布，总分{score}分。'
-    }
-  }
-})
-
-const saveEmailSettings = () => {
-  ElMessage.success('邮件配置保存成功')
-}
-
-const saveSmsSettings = () => {
-  ElMessage.success('短信配置保存成功')
-}
-
-const saveTemplates = () => {
-  ElMessage.success('消息模板保存成功')
-}
-
-const testEmailNotification = () => {
-  ElMessage.success('测试邮件已发送，请查收')
-}
-
-const testSmsNotification = () => {
-  ElMessage.success('测试短信已发送，请查收')
-}
-
-// ============ 6. 安全设置 ============
-const securitySettings = reactive({
-  loginLockEnabled: true,
-  maxLoginAttempts: 5,
-  lockDuration: 30,
-  passwordStrengthEnabled: true,
-  passwordRules: ['length', 'number'],
-  sessionTimeout: 120,
-  ipWhitelist: '',
-  operationLogEnabled: true
-})
-
-const saveSecuritySettings = async () => {
-  try {
-    // 构建更新数据
-    const settingsToUpdate = [
-      { key: 'login_lock_enabled', value: securitySettings.loginLockEnabled },
-      { key: 'login_lock_count', value: securitySettings.maxLoginAttempts },
-      { key: 'login_lock_duration', value: securitySettings.lockDuration },
-      { key: 'password_strength_enabled', value: securitySettings.passwordStrengthEnabled },
-      { key: 'password_require_uppercase', value: securitySettings.passwordRules.includes('uppercase') },
-      { key: 'password_require_lowercase', value: securitySettings.passwordRules.includes('lowercase') },
-      { key: 'password_require_digit', value: securitySettings.passwordRules.includes('number') },
-      { key: 'password_require_special', value: securitySettings.passwordRules.includes('special') },
-      { key: 'session_timeout', value: securitySettings.sessionTimeout },
-      { key: 'operation_log_enabled', value: securitySettings.operationLogEnabled }
-    ]
-
-    await systemAPI.updateSettings(settingsToUpdate)
-    ElMessage.success('安全设置保存成功')
-  } catch (error) {
-    console.error('保存安全设置失败:', error)
-    ElMessage.error('保存失败，请稍后重试')
-  }
-}
-
-// ============ 7. AI配置 ============
-// AI服务商模型映射
-const AI_PROVIDER_MODELS = {
-  openai: ['gpt-4o-2024-11-20', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  anthropic: ['claude-opus-4-20251120', 'claude-sonnet-4-20251120', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest', 'claude-3-sonnet-latest', 'claude-3-haiku-latest'],
-  zhipu: ['glm-4-plus', 'glm-4-flash', 'glm-4-long', 'glm-4-alltools', 'glm-4', 'glm-3-turbo'],
-  qwen: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-max-long上下文'],
-  minimax: ['MiniMax-M2.7', 'abab6.5s-chat', 'abab6-chat'],
-  baidu: ['ernie-4.0-8k-latest', 'ernie-4.0-8k', 'ernie-4.0-turbo-8k-latest', 'ernie-3.5-8k-latest', 'ernie-3.5-8k'],
-  gemini: ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
-}
-
-const aiSettings = reactive({
-  provider: 'minimax',
-  model: 'MiniMax-M2.7',
-  apiKey: '',
-  apiUrl: '',
-  timeout: 120
-})
-
-// 根据选择的服务商获取模型列表
-const currentProviderModels = computed(() => {
-  return AI_PROVIDER_MODELS[aiSettings.provider] || []
-})
-
-// 当服务商变化时，重置模型选择
-const handleProviderChange = () => {
-  const models = AI_PROVIDER_MODELS[aiSettings.provider] || []
-  aiSettings.model = models[0] || ''
-}
-
-const saveAiSettings = async () => {
-  try {
-    await systemAPI.updateAiConfig({
-      provider: aiSettings.provider,
-      model: aiSettings.model,
-      api_key: aiSettings.apiKey,
-      api_url: aiSettings.apiUrl,
-      timeout: aiSettings.timeout
-    })
-    ElMessage.success('AI配置保存成功')
-  } catch (error) {
-    console.error('保存AI配置失败:', error)
-    ElMessage.error('保存失败，请稍后重试')
-  }
-}
-
-const testAiConnection = async () => {
-  try {
-    ElMessage.info('正在测试AI连接...')
-    const result = await systemAPI.testAiConnection()
-    if (result.success) {
-      ElMessage.success('AI连接测试成功！')
-    } else {
-      ElMessage.error('AI连接测试失败：' + result.message)
-    }
-  } catch (error) {
-    console.error('测试AI连接失败:', error)
-    ElMessage.error('测试连接失败，请稍后重试')
-  }
-}
-
+// Initialize
 onMounted(async () => {
-  // 初始化加载数据
-  fetchUsers()
-  fetchExamCategories()
-  fetchExamTypes()
-  // 加载角色权限配置
-  loadRolePermissions()
-  // 加载AI配置
-  try {
-    const res = await systemAPI.getAiConfig()
-    if (res.data) {
-      aiSettings.provider = res.data.provider
-      aiSettings.model = res.data.model
-      aiSettings.apiUrl = res.data.api_url || ''
-      aiSettings.timeout = res.data.timeout
-      // API密钥不返回，只显示已配置的提示
-      if (res.data.provider) {
-        aiSettings.apiKey = ''
-      }
-    }
-  } catch (error) {
-    console.error('加载AI配置失败:', error)
-  }
-})
-
-// ============ 8. 角色权限配置 ============
-const rolePermissionsForm = reactive({
-  role1: [],
-  role2: [],
-  role3: []
-})
-
-const loadRolePermissions = async () => {
-  try {
-    const res = await systemAPI.getRolePermissions()
-    if (res.data && res.data.length) {
-      res.data.forEach(item => {
-        if (item.role === 1) rolePermissionsForm.role1 = item.permissions || []
-        if (item.role === 2) rolePermissionsForm.role2 = item.permissions || []
-        if (item.role === 3) rolePermissionsForm.role3 = item.permissions || []
-      })
-    }
-  } catch (error) {
-    console.error('加载角色权限失败:', error)
-  }
-}
-
-const saveRolePermissions = async () => {
-  try {
-    await systemAPI.updateRolePermissions(1, rolePermissionsForm.role1)
-    await systemAPI.updateRolePermissions(2, rolePermissionsForm.role2)
-    await systemAPI.updateRolePermissions(3, rolePermissionsForm.role3)
-    ElMessage.success('角色权限配置已保存')
-  } catch (error) {
-    console.error('保存角色权限失败:', error)
-    ElMessage.error('保存失败，请稍后重试')
-  }
-}
-
-// ============ 密码重置申请管理 ============
-const loadPasswordResetRequests = async () => {
-  resetLoading.value = true
-  try {
-    const res = await systemAPI.getPasswordResetRequests({ status: undefined })
-    passwordResetRequests.value = res.data?.items || []
-  } catch (error) {
-    console.error('加载密码重置申请失败:', error)
-    ElMessage.error('加载失败')
-  } finally {
-    resetLoading.value = false
-  }
-}
-
-const showResetDialog = (row) => {
-  resetForm.requestId = row.id
-  resetForm.username = row.username
-  resetForm.newPassword = ''
-  resetDialogVisible.value = true
-}
-
-const submitPasswordReset = async () => {
-  if (!resetForm.newPassword || resetForm.newPassword.length < 8) {
-    ElMessage.warning('密码长度至少8位')
-    return
-  }
-  try {
-    await systemAPI.processPasswordResetRequest(resetForm.requestId, {
-      new_password: resetForm.newPassword
-    })
-    ElMessage.success('密码已重置，请告知用户新密码')
-    resetDialogVisible.value = false
-    loadPasswordResetRequests()
-  } catch (error) {
-    console.error('重置密码失败:', error)
-    ElMessage.error(error.message || '重置失败')
-  }
-}
-
-const deleteResetRequest = async (id) => {
-  try {
-    await systemAPI.deletePasswordResetRequest(id)
-    ElMessage.success('申请记录已删除')
-    loadPasswordResetRequests()
-  } catch (error) {
-    console.error('删除申请记录失败:', error)
-    ElMessage.error('删除失败')
-  }
-}
-
-const formatDateTime = (dateStr) => {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return d.toLocaleString('zh-CN')
-}
-
-// 切换到密码重置标签页时自动加载
-watch(activeTab, (newTab) => {
-  if (newTab === 'passwordReset' && passwordResetRequests.value.length === 0) {
-    loadPasswordResetRequests()
-  }
+  await initializeSystemSettings()
 })
 </script>
+
 
 <style scoped>
 .system-settings {
@@ -1634,8 +953,14 @@ watch(activeTab, (newTab) => {
   border-top: none;
 }
 
-.settings-form {
-  max-width: 800px;
+.permission-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.permission-grid .el-checkbox {
+  min-width: 120px;
 }
 
 .form-tip {
