@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # PDF 导出中文字体路径（可选；留空则自动探测常见系统字体）
     pdf_font_path: str = ""
 
+    # Observability（可观测性）
+    sentry_dsn: str = ""  # 留空则不启用 Sentry
+    environment: str = "development"  # development / staging / production
+    log_json: bool = False  # 生产建议 true，输出 JSON 结构化日志
+
 
 def validate_settings() -> None:
     """Validate critical settings on startup.

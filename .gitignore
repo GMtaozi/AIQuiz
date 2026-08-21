@@ -58,3 +58,6 @@ gui-test-screenshots/
 *.bak
 .claude/settings.local.json
 *.tsbuildinfo
+
+# 运维：数据库备份输出
+deploy/backups/

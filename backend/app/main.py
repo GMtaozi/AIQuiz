@@ -41,6 +41,10 @@ async def lifespan(app: FastAPI):
     另：初始化默认系统设置到 DB（仅一次，避免每个请求都跑 init_default_settings）。
     """
     # ---- startup ----
+    from app.observability import init_sentry, setup_logging
+
+    setup_logging(debug=settings.debug, json_format=settings.log_json)
+    init_sentry(settings.sentry_dsn, settings.environment)
     try:
         from app.database import SessionLocal
         from app.routers.system import init_default_settings
