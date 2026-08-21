@@ -1,14 +1,14 @@
 """Security Utilities - JWT Token Verification"""
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.constants import UserRole
 from app.database import get_db
 from app.models import User
-from app.services.auth import AuthService
-from app.constants import UserRole
 
 security = HTTPBearer()
 
@@ -21,11 +21,12 @@ def verify_token(token: str) -> dict:
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],  # Must match exactly, no other algorithms
+            audience="aiquiz-web",  # 与 create_access_token 的 aud 声明匹配（评估 P2-18）
             options={
                 "require": ["exp", "sub"],
                 "verify_exp": True,
                 "verify_sub": True,
-            }
+            },
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -34,7 +35,7 @@ def verify_token(token: str) -> dict:
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
@@ -43,23 +44,35 @@ def verify_token(token: str) -> dict:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    """Extract and validate current user from JWT token."""
+    """Extract and validate current user from JWT token.
+
+    评估 P1-4：优先读取 httpOnly cookie 中的 access_token（前端 JS 无法窃取），
+    其次兼容 Authorization Bearer 头（渐进迁移期）。"""
     auth_header = request.headers.get("Authorization")
-    if not auth_header:
+    token = None
+
+    # 1) httpOnly cookie（安全首选）
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        token = cookie_token
+
+    # 2) Authorization Bearer 头（向后兼容）
+    if not token and auth_header:
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization format",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        token = auth_header.replace("Bearer ", "")
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No authorization header",
+            detail="No authorization credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization format",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = auth_header.replace("Bearer ", "")
     payload = verify_token(token)
 
     user_id = payload.get("sub")
@@ -75,6 +88,13 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+
+    # 禁用账号（status=0）不允许访问任何接口
+    if user.status != 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="账号已被禁用",
         )
 
     return user
@@ -104,14 +124,24 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 # 默认角色权限配置
 DEFAULT_ROLE_PERMISSIONS = {
-    1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge', 'settings', 'user-permission'],
-    2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'knowledge'],
-    3: ['audit', 'question-bank']
+    1: [
+        "ai-question",
+        "audit",
+        "auto-paper",
+        "question-bank",
+        "paper-management",
+        "knowledge",
+        "settings",
+        "user-permission",
+    ],
+    2: ["ai-question", "audit", "auto-paper", "question-bank", "paper-management", "knowledge"],
+    3: ["audit", "question-bank"],
 }
 
 
 def require_permission(permission: str):
     """Require user to have specific menu permission."""
+
     def dependency(user: User = Depends(get_current_user)) -> User:
         # 获取用户实际权限
         user_perms = user.menu_permissions
@@ -130,7 +160,8 @@ def require_permission(permission: str):
         if permission not in effective_perms:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"无权限访问该功能",
+                detail="无权限访问该功能",
             )
         return user
+
     return dependency

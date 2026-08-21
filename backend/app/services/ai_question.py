@@ -1,10 +1,12 @@
-﻿"""AI Question Generation Service - 使用统一AI服务层"""
+"""AI Question Generation Service - 使用统一AI服务层"""
+
 import asyncio
 import json
 import logging
 import re
-from typing import List, Optional
-from app.services.ai_provider import get_ai_provider
+from typing import List, Tuple
+
+from app.services.ai_provider import AIResponse, get_ai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +21,18 @@ def _sanitize_for_prompt(value: str) -> str:
         return ""
     # Remove common injection patterns
     dangerous_patterns = [
-        r'```[\s\S]*?```',  # Code blocks
-        r'\$\{.*?\}',      # Template variables
-        r'{{.*?}}',        # Mustache templates
-        r'<script.*?/script>',  # HTML script tags
-        r'javascript:',    # JS protocol
-        r'on\w+\s*=',     # Event handlers
+        r"```[\s\S]*?```",  # Code blocks
+        r"\$\{.*?\}",  # Template variables
+        r"{{.*?}}",  # Mustache templates
+        r"<script.*?/script>",  # HTML script tags
+        r"javascript:",  # JS protocol
+        r"on\w+\s*=",  # Event handlers
     ]
     result = str(value)
     for pattern in dangerous_patterns:
-        result = re.sub(pattern, '', result, flags=re.IGNORECASE)
+        result = re.sub(pattern, "", result, flags=re.IGNORECASE)
     # Escape double quotes and backslashes
-    result = result.replace('\\', '\\\\').replace('"', '\\"')
+    result = result.replace("\\", "\\\\").replace('"', '\\"')
     # Truncate to reasonable length
     return result[:500] if len(result) > 500 else result
 
@@ -40,11 +42,15 @@ async def _call_ai_with_retry(
     model: str = None,
     max_tokens: int = 2048,
     temperature: float = 0.7,
-    max_retries: int = 2
-) -> Optional[str]:
-    """使用统一AI服务层调用AI API，支持重试"""
+    max_retries: int = 2,
+    user_id: int | None = None,
+) -> Tuple[str | None, AIResponse]:
+    """使用统一AI服务层调用AI API，支持重试。
+    返回 (content, last_usage)，调用方可据此写入 AICallLog。
+    """
     backoff = 2.0
     max_backoff = 8.0
+    last_usage = AIResponse()
 
     for attempt in range(max_retries):
         try:
@@ -54,26 +60,40 @@ async def _call_ai_with_retry(
                 messages=[{"role": "user", "content": prompt}],
                 model=model,
                 max_tokens=max_tokens,
-                temperature=temperature
+                temperature=temperature,
+                user_id=user_id,
             )
             elapsed = asyncio.get_event_loop().time() - t0
+            last_usage = result  # AIResponse
 
-            if result is not None:
-                logger.info(f"AI API: attempt {attempt+1} 成功, 耗时 {elapsed:.1f}s, "
-                           f"prompt_len={len(prompt)}, response_len={len(result)}")
-                return result
+            if result.content is not None:
+                logger.info(
+                    f"AI API: attempt {attempt + 1} 成功, 耗时 {elapsed:.1f}s, "
+                    f"prompt_len={len(prompt)}, response_len={len(result.content)}, "
+                    f"tokens={result.total_tokens}"
+                )
+                return result.content, result
             else:
-                logger.warning(f"AI API: attempt {attempt+1} 返回为空, 耗时 {elapsed:.1f}s")
+                logger.warning(
+                    f"AI API: attempt {attempt + 1} 返回为空, 耗时 {elapsed:.1f}s, error={result.error_message}"
+                )
+                # 评估 P1-8：4xx 客户端错误（密钥无效/参数错误）重试无意义，直接放弃；
+                # 429 限流属于可重试的 4xx，除外。
+                if result.error_message:
+                    m = re.search(r"HTTP (4\d\d)", result.error_message)
+                    if m and int(m.group(1)) != 429:
+                        break
 
         except Exception as e:
-            logger.warning(f"AI API: attempt {attempt+1} 失败: {e}")
+            logger.warning(f"AI API: attempt {attempt + 1} 失败: {e}")
+            last_usage = AIResponse(error_message=str(e))
 
         if attempt < max_retries - 1:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, max_backoff)
 
     logger.warning("AI API: 所有重试均失败")
-    return None
+    return None, last_usage
 
 
 def build_question_generation_prompt(
@@ -106,14 +126,14 @@ def build_question_generation_prompt(
     if knowledge_content:
         # 截断过长的知识点内容，保留前6000字符（分组后通常不超4000）
         safe_content = knowledge_content[:6000] if len(knowledge_content) > 6000 else knowledge_content
-        knowledge_section = f'''
+        knowledge_section = f"""
 知识点参考内容：
 ---
 {safe_content}
 ---
 
 请严格按照上述知识点参考内容来出题，题目必须围绕这些知识点展开，确保题目内容与知识点直接相关。不要凭空编造不在知识点范围内的题目。
-'''
+"""
 
     prompt = f'''你是一个专业的试题生成助手。请根据以下要求生成{safe_count}道题目。
 
@@ -142,7 +162,7 @@ def build_question_generation_prompt(
     return prompt
 
 
-def _try_parse_questions_json(text: str) -> Optional[List[dict]]:
+def _try_parse_questions_json(text: str) -> List[dict] | None:
     """Try to parse questions JSON from AI response, with fallback for truncated output."""
     text = text.strip()
 
@@ -164,7 +184,7 @@ def _try_parse_questions_json(text: str) -> Optional[List[dict]]:
         pass
 
     # Try to extract JSON array from text (model may add extra text)
-    match = re.search(r'\[.*\]', text, re.DOTALL)
+    match = re.search(r"\[.*\]", text, re.DOTALL)
     if match:
         try:
             data = json.loads(match.group())
@@ -175,9 +195,9 @@ def _try_parse_questions_json(text: str) -> Optional[List[dict]]:
 
     # Try to fix truncated JSON: find last complete object and close the array
     # Pattern: find the last "}" before the truncation point
-    last_brace = text.rfind('}')
+    last_brace = text.rfind("}")
     if last_brace > 0:
-        truncated = text[:last_brace + 1] + ']'
+        truncated = text[: last_brace + 1] + "]"
         try:
             data = json.loads(truncated)
             if isinstance(data, list) and len(data) > 0:
@@ -247,11 +267,16 @@ async def _verify_questions(
 
     try:
         provider = get_ai_provider()
-        result_text = await provider.chat(
+        result = await provider.chat(
             messages=[{"role": "user", "content": verify_prompt}],
             max_tokens=4096,
             temperature=0.3,
         )
+
+        # 评估 P1-8 修复：provider.chat() 返回 AIResponse 对象而非字符串，
+        # 原代码直接 json.loads(result_text.strip()) 必然 AttributeError 被吞，
+        # 导致校验恒跳过（白花一次调用）。这里提取 .content。
+        result_text = result.content if hasattr(result, "content") else result
 
         if not result_text:
             logger.warning("题目校验：AI未返回结果，跳过校验")
@@ -264,7 +289,7 @@ async def _verify_questions(
             verified_data = json.loads(result_text.strip())
         except json.JSONDecodeError:
             # 尝试从文本中提取JSON
-            match = re.search(r'\[.*\]', result_text, re.DOTALL)
+            match = re.search(r"\[.*\]", result_text, re.DOTALL)
             if match:
                 try:
                     verified_data = json.loads(match.group())
@@ -293,7 +318,7 @@ async def _verify_questions(
         return valid_questions
 
     except Exception as e:
-        logger.error(f"题目校验异常：{str(e)}，跳过校验")
+        logger.error(f"题目校验异常：{e!s}，跳过校验")
         return questions
 
 
@@ -327,6 +352,8 @@ async def generate_questions(
     """
     BATCH_SIZE = 5  # 每批最多5题，避免小模型输出截断
     all_processed = []
+    # 评估 P1-8：单次出题数量上限（1-50），防止传入超大 count 触发数百次 AI 调用导致成本放大
+    count = min(max(int(count), 1), 50)
     total_expected = count
 
     # 知识点内容截断：每组已由上层控制不超过 4000 字符
@@ -350,7 +377,9 @@ async def generate_questions(
         result_text = await _call_ai_with_retry(prompt, max_tokens=8192)
 
         if result_text is None:
-            logger.warning(f"Batch {batch_start//BATCH_SIZE + 1}: AI API returned None, expected {batch_count} questions")
+            logger.warning(
+                f"Batch {batch_start // BATCH_SIZE + 1}: AI API returned None, expected {batch_count} questions"
+            )
             continue
 
         questions_data = _try_parse_questions_json(result_text)
@@ -368,9 +397,13 @@ async def generate_questions(
                     "options": q.get("options", []),
                 }
                 all_processed.append(processed_q)
-            logger.info(f"Batch {batch_start//BATCH_SIZE + 1}: Generated {len(questions_data)}/{batch_count} questions (total: {len(all_processed)}/{total_expected})")
+            logger.info(
+                f"Batch {batch_start // BATCH_SIZE + 1}: Generated {len(questions_data)}/{batch_count} questions (total: {len(all_processed)}/{total_expected})"
+            )
         else:
-            logger.warning(f"Batch {batch_start//BATCH_SIZE + 1}: Failed to parse AI response, raw text length={len(result_text)}")
+            logger.warning(
+                f"Batch {batch_start // BATCH_SIZE + 1}: Failed to parse AI response, raw text length={len(result_text)}"
+            )
 
     # 补题机制：如果实际生成题数不足，尝试再补一轮
     missing = total_expected - len(all_processed)
@@ -404,7 +437,9 @@ async def generate_questions(
                 logger.info(f"补题成功：新增 {len(questions_data)} 道 (total: {len(all_processed)}/{total_expected})")
 
     if len(all_processed) < total_expected:
-        logger.warning(f"最终生成 {len(all_processed)}/{total_expected} 题，缺少 {total_expected - len(all_processed)} 题")
+        logger.warning(
+            f"最终生成 {len(all_processed)}/{total_expected} 题，缺少 {total_expected - len(all_processed)} 题"
+        )
 
     # 题目校验：AI自检，剔除答非所问的题目
     if all_processed and safe_knowledge:

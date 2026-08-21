@@ -1,11 +1,14 @@
-﻿"""Chapters Router - CRUD for chapters with tree structure support"""
+"""Chapters Router - CRUD for chapters with tree structure support"""
+
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+
 from app.database import get_db
-from app.schemas.question import ChapterCreate, ChapterUpdate, ChapterResponse, ChapterTreeResponse
 from app.models.question import Chapter
 from app.models.user import User
+from app.schemas.question import ChapterCreate, ChapterResponse, ChapterTreeResponse, ChapterUpdate
 from app.utils.security import get_current_user, require_teacher_or_admin
 
 router = APIRouter()
@@ -19,10 +22,12 @@ def list_chapters(
     db: Session = Depends(get_db),
 ):
     """List all chapters for a subject (requires authentication)"""
-    chapters = db.query(Chapter).filter(
-        Chapter.subject_id == subject_id,
-        Chapter.status == 1
-    ).order_by(Chapter.order, Chapter.id).all()
+    chapters = (
+        db.query(Chapter)
+        .filter(Chapter.subject_id == subject_id, Chapter.status == 1)
+        .order_by(Chapter.order, Chapter.id)
+        .all()
+    )
 
     if tree:
         # Build tree structure
@@ -64,7 +69,7 @@ def create_chapter(
     subject_id: int,
     chapter_data: ChapterCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin)
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Create a new chapter for a subject (teacher/admin only)"""
     chapter = Chapter(
@@ -83,11 +88,7 @@ def create_chapter(
 
 
 @router.get("/{chapter_id}", response_model=ChapterResponse)
-def get_chapter(
-    chapter_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+def get_chapter(chapter_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get a chapter by ID (requires authentication)"""
     chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
     if not chapter:
@@ -100,7 +101,7 @@ def update_chapter(
     chapter_id: int,
     chapter_data: ChapterUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin)
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Update a chapter (teacher/admin only)"""
     chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
@@ -118,9 +119,7 @@ def update_chapter(
 
 @router.delete("/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_chapter(
-    chapter_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_teacher_or_admin)
+    chapter_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_teacher_or_admin)
 ):
     """Delete a chapter - soft delete (teacher/admin only)"""
     chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()

@@ -5,10 +5,9 @@
 """
 
 import io
-import re
 import os
+import re
 import tempfile
-from typing import Optional
 
 # 文档解析依赖（可选）
 PDF_AVAILABLE = False
@@ -16,20 +15,24 @@ DOCX_AVAILABLE = False
 WIN32_AVAILABLE = False
 
 try:
-    import win32com.client
     import pythoncom
+    import win32com.client
+
     WIN32_AVAILABLE = True
 except ImportError:
     pass
 
 try:
-    import PyPDF2
+    # 评估 P2-16：PyPDF2 已停维护且有 CVE-2023-36464，迁移到官方后继库 pypdf
+    import pypdf
+
     PDF_AVAILABLE = True
 except ImportError:
     pass
 
 try:
     import docx
+
     DOCX_AVAILABLE = True
 except ImportError:
     pass
@@ -38,10 +41,10 @@ except ImportError:
 def extract_text_from_pdf(file_content: bytes) -> str:
     """从 PDF 文件提取文本"""
     if not PDF_AVAILABLE:
-        raise ImportError("PyPDF2 未安装，请运行: pip install PyPDF2")
+        raise ImportError("pypdf 未安装，请运行: pip install pypdf")
 
     text_parts = []
-    reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+    reader = pypdf.PdfReader(io.BytesIO(file_content))
 
     for page_num, page in enumerate(reader.pages):
         try:
@@ -88,7 +91,7 @@ def extract_text_from_doc(file_content: bytes) -> str:
 
     try:
         # 保存到临时文件
-        with tempfile.NamedTemporaryFile(suffix='.doc', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
             tmp.write(file_content)
             tmp_path = tmp.name
 
@@ -103,8 +106,8 @@ def extract_text_from_doc(file_content: bytes) -> str:
                     # 提取纯文本
                     text = doc.Content.Text
                     # 清理文本
-                    paragraphs = [p.strip() for p in text.split('\r') if p.strip()]
-                    return '\n\n'.join(paragraphs)
+                    paragraphs = [p.strip() for p in text.split("\r") if p.strip()]
+                    return "\n\n".join(paragraphs)
                 finally:
                     doc.Close(False)
             finally:
@@ -118,20 +121,20 @@ def extract_text_from_doc(file_content: bytes) -> str:
 def extract_text_from_markdown(content: str) -> str:
     """从 Markdown 提取文本"""
     # 移除代码块
-    content = re.sub(r'```[\s\S]*?```', '', content)
+    content = re.sub(r"```[\s\S]*?```", "", content)
     # 移除行内代码
-    content = re.sub(r'`[^`]+`', '', content)
+    content = re.sub(r"`[^`]+`", "", content)
     # 移除图片
-    content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+    content = re.sub(r"!\[.*?\]\(.*?\)", "", content)
     # 移除链接，保留文本
-    content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)
+    content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
     # 移除 HTML 标签
-    content = re.sub(r'<[^>]+>', '', content)
+    content = re.sub(r"<[^>]+>", "", content)
     # 移除 Markdown 标题符号
-    content = re.sub(r'^#{1,6}\s+', '', content, flags=re.MULTILINE)
+    content = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)
     # 移除加粗和斜体
-    content = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', content)
-    content = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', content)
+    content = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", content)
+    content = re.sub(r"_{1,3}([^_]+)_{1,3}", r"\1", content)
 
     return content.strip()
 
@@ -139,7 +142,7 @@ def extract_text_from_markdown(content: str) -> str:
 def extract_text_from_txt(content: bytes) -> str:
     """从纯文本提取"""
     # 尝试多种编码
-    encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
+    encodings = ["utf-8", "gbk", "gb2312", "gb18030", "latin-1"]
 
     for encoding in encodings:
         try:
@@ -148,14 +151,10 @@ def extract_text_from_txt(content: bytes) -> str:
             continue
 
     # 最后尝试忽略错误
-    return content.decode('utf-8', errors='ignore').strip()
+    return content.decode("utf-8", errors="ignore").strip()
 
 
-def parse_document(
-    file_content: bytes,
-    file_extension: str,
-    original_filename: str = ""
-) -> str:
+def parse_document(file_content: bytes, file_extension: str, original_filename: str = "") -> str:
     """统一文档解析入口
 
     Args:
@@ -166,34 +165,34 @@ def parse_document(
     Returns:
         提取的文本内容
     """
-    ext = file_extension.lower().strip().lstrip('.')
+    ext = file_extension.lower().strip().lstrip(".")
 
-    if ext == 'pdf':
+    if ext == "pdf":
         return extract_text_from_pdf(file_content)
 
-    elif ext == 'docx':
+    elif ext == "docx":
         return extract_text_from_docx(file_content)
-    elif ext == 'doc':
+    elif ext == "doc":
         return extract_text_from_doc(file_content)
 
-    elif ext in ('md', 'markdown'):
+    elif ext in ("md", "markdown"):
         # Markdown 文件支持多编码
         if isinstance(file_content, bytes):
             # 尝试多种编码
             content = None
-            for encoding in ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']:
+            for encoding in ["utf-8", "gbk", "gb2312", "gb18030", "latin-1"]:
                 try:
                     content = file_content.decode(encoding)
                     break
                 except (UnicodeDecodeError, AttributeError):
                     continue
             if content is None:
-                content = file_content.decode('utf-8', errors='ignore')
+                content = file_content.decode("utf-8", errors="ignore")
         else:
             content = file_content
         return extract_text_from_markdown(content)
 
-    elif ext in ('txt', 'text'):
+    elif ext in ("txt", "text"):
         return extract_text_from_txt(file_content)
 
     else:
@@ -206,8 +205,8 @@ def truncate_for_analysis(text: str, max_chars: int = 50000) -> str:
         return text
 
     # 保留开头和结尾，中间部分截断
-    head = text[:max_chars // 2]
-    tail = text[-max_chars // 2:]
+    head = text[: max_chars // 2]
+    tail = text[-max_chars // 2 :]
 
     return f"""{head}
 

@@ -1,3 +1,31 @@
-from app.routers import auth, questions, subjects, chapters, ai_templates, papers, exams, exam_records
-from app.routers import audit, dashboard, knowledge, system, paper_template
-__all__ = ["auth", "questions", "subjects", "chapters", "ai_templates", "papers", "exams", "exam_records", "audit", "dashboard", "knowledge", "system", "paper_template"]
+from app.routers import (
+    ai_templates,
+    audit,
+    auth,
+    chapters,
+    dashboard,
+    exam_records,
+    exams,
+    knowledge,
+    paper_template,
+    papers,
+    questions,
+    subjects,
+    system,
+)
+
+__all__ = [
+    "ai_templates",
+    "audit",
+    "auth",
+    "chapters",
+    "dashboard",
+    "exam_records",
+    "exams",
+    "knowledge",
+    "paper_template",
+    "papers",
+    "questions",
+    "subjects",
+    "system",
+]

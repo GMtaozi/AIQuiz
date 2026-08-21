@@ -1,6 +1,8 @@
 """Password Reset Request Model - 密码重置请求表"""
-from sqlalchemy import Column, Integer, String, SmallInteger, DateTime, ForeignKey
+
+from sqlalchemy import Column, DateTime, Integer, SmallInteger, String
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 

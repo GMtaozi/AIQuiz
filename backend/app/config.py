@@ -5,10 +5,8 @@ Uses pydantic Settings for managing application configuration including
 database URL, JWT secret key, and other environment-based settings.
 """
 
-import os
-import secrets
 from functools import lru_cache
-from typing import Literal
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -37,39 +35,44 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
 
     # CORS - Must be explicitly configured, no wildcards allowed
-    cors_origins: list[str] = ["http://localhost:3002", "http://localhost:5173", "http://localhost:3000", "http://localhost:3001", "http://localhost:3004"]
+    cors_origins: list[str] = [
+        "http://localhost:3002",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3004",
+    ]
 
     # User Roles
     user_roles: list[str] = ["admin", "teacher", "student"]
 
     # MiniMax AI API (用于 AI 出题和知识点提取)
     minimax_api_key: str = ""
-    minimax_group_id: str = ""
+
+    # API docs (Swagger/ReDoc/OpenAPI). Disabled by default; enable locally only.
+    enable_docs: bool = False
+
+    # Redis (用于限流等). 容错：连不上由调用方降级。
+    redis_url: str = "redis://localhost:6379/0"
+
+    # PDF 导出中文字体路径（可选；留空则自动探测常见系统字体）
+    pdf_font_path: str = ""
 
 
 def validate_settings() -> None:
-    """Validate critical settings on startup."""
-    # Skip validation in test mode
+    """Validate critical settings on startup.
+
+    JWT secret key must be explicitly set regardless of debug mode.
+    Set TESTING=true to skip validation (e.g. unit tests).
+    """
     if os.environ.get("TESTING", "").lower() in ("1", "true", "yes"):
         return
 
     s = get_settings()
-    # Generate a secure default only for development (never use in production)
-    if not s.jwt_secret_key:
-        if s.debug:
-            # Only generate a warning in debug mode
-            import warnings
-            warnings.warn(
-                "JWT_SECRET_KEY not set! Using insecure default for development only. "
-                "Set JWT_SECRET_KEY environment variable in production.",
-                RuntimeWarning
-            )
-            return "dev-only-insecure-key-do-not-use-in-production"
-        else:
-            raise ValueError(
-                "JWT_SECRET_KEY must be set in production environment. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
-            )
+    if not s.jwt_secret_key or s.jwt_secret_key == "change-me-in-production":
+        raise ValueError(
+            'JWT_SECRET_KEY must be set. Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+        )
 
 
 @lru_cache
@@ -80,5 +83,5 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 
-# Validate on module load
-_ = validate_settings()
+# Validate on module load (raises if JWT_SECRET_KEY is missing)
+validate_settings()

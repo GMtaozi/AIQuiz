@@ -8,13 +8,12 @@
 
 与知识点导入的思路一致：规则做骨架，AI做血肉。
 """
-import re
-import json
+
+from dataclasses import dataclass, field
 import logging
 import random
-from typing import List, Optional, Dict, Tuple
-from collections import Counter
-from dataclasses import dataclass, field
+import re
+from typing import Dict, List, Tuple
 
 from app.models.knowledge import KnowledgePoint
 
@@ -26,38 +25,41 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────
 
 # 知识点类型枚举
-KP_DEFINITION = "definition"      # 定义类：X是指Y、X的含义
-KP_NORMATIVE = "normative"        # 规范类：应当X、必须Y
-KP_PROHIBITIVE = "prohibitive"    # 禁止类：不得X、禁止Y
-KP_PROCEDURAL = "procedural"      # 程序类：经过X程序、由Y批准
-KP_SCOPE = "scope"                # 范围类：适用于X、包括Y
-KP_PENALTY = "penalty"            # 处罚类：处罚、罚款、撤销
-KP_GENERAL = "general"            # 通用类
+KP_DEFINITION = "definition"  # 定义类：X是指Y、X的含义
+KP_NORMATIVE = "normative"  # 规范类：应当X、必须Y
+KP_PROHIBITIVE = "prohibitive"  # 禁止类：不得X、禁止Y
+KP_PROCEDURAL = "procedural"  # 程序类：经过X程序、由Y批准
+KP_SCOPE = "scope"  # 范围类：适用于X、包括Y
+KP_PENALTY = "penalty"  # 处罚类：处罚、罚款、撤销
+KP_GENERAL = "general"  # 通用类
 
 # 类型识别规则：关键词 → 类型
 TYPE_PATTERNS = [
-    (KP_PROHIBITIVE, [r'不得', r'禁止', r'严禁', r'不允许', r'不可以', r'不得有', r'禁止性']),
-    (KP_PENALTY, [r'处罚', r'罚款', r'撤销', r'吊销', r'取消', r'追究', r'责令', r'没收', r'构成犯罪']),
-    (KP_NORMATIVE, [r'应当', r'必须', r'需要', r'应当按照', r'按照规定', r'依法应当', r'应当依法', r'须', r'应']),
-    (KP_PROCEDURAL, [r'程序', r'流程', r'步骤', r'审批', r'批准', r'申请', r'登记', r'备案', r'受理', r'报送', r'办理']),
-    (KP_DEFINITION, [r'是指', r'定义为', r'含义', r'概念', r'定义', r'简称', r'称为', r'所称']),
-    (KP_SCOPE, [r'适用', r'包括', r'分为', r'范围', r'种类', r'类别', r'情形', r'以下.*属于']),
+    (KP_PROHIBITIVE, [r"不得", r"禁止", r"严禁", r"不允许", r"不可以", r"不得有", r"禁止性"]),
+    (KP_PENALTY, [r"处罚", r"罚款", r"撤销", r"吊销", r"取消", r"追究", r"责令", r"没收", r"构成犯罪"]),
+    (KP_NORMATIVE, [r"应当", r"必须", r"需要", r"应当按照", r"按照规定", r"依法应当", r"应当依法", r"须", r"应"]),
+    (
+        KP_PROCEDURAL,
+        [r"程序", r"流程", r"步骤", r"审批", r"批准", r"申请", r"登记", r"备案", r"受理", r"报送", r"办理"],
+    ),
+    (KP_DEFINITION, [r"是指", r"定义为", r"含义", r"概念", r"定义", r"简称", r"称为", r"所称"]),
+    (KP_SCOPE, [r"适用", r"包括", r"分为", r"范围", r"种类", r"类别", r"情形", r"以下.*属于"]),
 ]
 
 
 def classify_knowledge_point(kp_name: str, kp_desc: str) -> str:
     """根据知识点名称和描述，判断其类型
-    
+
     优先匹配禁止类和处罚类（最严格），
     然后是规范类、程序类，最后是定义类和范围类。
     """
     text = f"{kp_name} {kp_desc or ''}"
-    
+
     for kp_type, patterns in TYPE_PATTERNS:
         for pattern in patterns:
             if re.search(pattern, text):
                 return kp_type
-    
+
     return KP_GENERAL
 
 
@@ -71,9 +73,9 @@ STRATEGY_MAP = {
     KP_DEFINITION: {
         "name": "定义类",
         "question_mix": {
-            "single_choice": 0.4,    # 40% 单选
-            "true_false": 0.3,       # 30% 判断
-            "fill_blank": 0.3,       # 30% 填空（用单选实现）
+            "single_choice": 0.4,  # 40% 单选
+            "true_false": 0.3,  # 30% 判断
+            "fill_blank": 0.3,  # 30% 填空（用单选实现）
         },
         "ai_strategy": """【定义类知识点出题策略】
 - 30%：改写定义，用"以下对X的理解/定义，正确的是"提问（不照搬原文表述）
@@ -199,38 +201,47 @@ STRATEGY_MAP = {
 # 数据结构
 # ──────────────────────────────────────────────
 
+
 @dataclass
 class KnowledgePointInfo:
     """知识点信息（从数据库模型提取）"""
+
     id: int
     name: str
     description: str
+    excerpt: str = ""  # 原文片段（content_excerpt）
     parent_name: str = ""
     kp_type: str = KP_GENERAL
-    text: str = ""  # 完整文本（name + desc）
+    text: str = ""  # 完整文本（name + desc + excerpt）
 
     def __post_init__(self):
         self.text = f"【{self.name}】"
         if self.description:
             self.text += f"：{self.description}"
+        if self.excerpt:
+            self.text += f"\n\n原文参考：\n{self.excerpt}"
 
 
 @dataclass
 class QuestionPlan:
     """出题计划"""
-    kp_type: str                    # 知识点类型
-    type_name: str                  # 类型中文名
+
+    kp_type: str  # 知识点类型
+    type_name: str  # 类型中文名
     knowledge_points: List[KnowledgePointInfo]  # 该类型的知识点列表
-    total_count: int                # 该类型分配的题目数
+    total_count: int  # 该类型分配的题目数
     question_mix: Dict[str, float]  # 题型占比
-    difficulty_distribution: Dict[int, float] = field(default_factory=lambda: {1: 0.2, 2: 0.3, 3: 0.3, 4: 0.1, 5: 0.1})  # 难度分布
-    ai_strategy: str = ""          # AI出题策略
+    difficulty_distribution: Dict[int, float] = field(
+        default_factory=lambda: {1: 0.2, 2: 0.3, 3: 0.3, 4: 0.1, 5: 0.1}
+    )  # 难度分布
+    ai_strategy: str = ""  # AI出题策略
     rule_templates: List[Tuple[str, str]] = field(default_factory=list)  # 规则模板列表
 
 
 # ──────────────────────────────────────────────
 # 第三层：出题计划生成（规则）
 # ──────────────────────────────────────────────
+
 
 def build_question_plans(
     knowledge_points: List[KnowledgePointInfo],
@@ -301,8 +312,10 @@ def build_question_plans(
         diff = total_count - actual_total
         plans[0].total_count += diff  # 差额加到第一个计划
 
-    logger.info(f"出题计划: {len(plans)} 个类型组, "
-                + ", ".join(f"{p.type_name}({len(p.knowledge_points)}个知识点,{p.total_count}题)" for p in plans))
+    logger.info(
+        f"出题计划: {len(plans)} 个类型组, "
+        + ", ".join(f"{p.type_name}({len(p.knowledge_points)}个知识点,{p.total_count}题)" for p in plans)
+    )
 
     return plans
 
@@ -345,47 +358,47 @@ def _synonym_replace(text: str) -> str:
 
 def _generate_distractors(correct_text: str, all_kps: List[KnowledgePointInfo], count: int = 3) -> List[str]:
     """从其他知识点生成干扰选项
-    
+
     策略：从同级/同类知识点中提取信息，生成半真半假的干扰项
     """
     distractors = []
-    
+
     # 收集其他知识点的描述片段
     other_descs = []
     for kp in all_kps:
         if kp.description and kp.text != correct_text:
             other_descs.append(kp.description)
-    
+
     if not other_descs:
         # 没有其他知识点，生成通用干扰项
         distractors = ["以上都不是", "无需特殊要求", "由当事人自行决定"]
         return distractors[:count]
-    
+
     # 从其他描述中随机选取，可能进行同义替换
     random.shuffle(other_descs)
-    for desc in other_descs[:count * 2]:  # 多取一些，后面筛选
+    for desc in other_descs[: count * 2]:  # 多取一些，后面筛选
         if len(desc) > 5:  # 太短的描述不适合做选项
             modified = _synonym_replace(desc[:80])  # 截断过长的描述
             if modified not in distractors and modified != correct_text[:80]:
                 distractors.append(modified)
         if len(distractors) >= count:
             break
-    
+
     # 仍然不够则生成通用干扰项
     while len(distractors) < count:
         distractors.append("以上均不正确")
-    
+
     return distractors[:count]
 
 
 def rule_generate_single_choice(
     kp: KnowledgePointInfo,
     all_kps: List[KnowledgePointInfo],
-) -> Optional[dict]:
+) -> dict | None:
     """规则生成单选题"""
     if not kp.description or len(kp.description) < 4:
         return None
-    
+
     # 随机选择一种模板
     templates = [
         f"以下关于{kp.name}的说法，正确的是？",
@@ -393,24 +406,21 @@ def rule_generate_single_choice(
         f"根据相关规定，以下哪项对{kp.name}的表述是正确的？",
     ]
     question_content = random.choice(templates)
-    
+
     # 正确答案（同义替换）
     correct = _synonym_replace(kp.description[:80])
-    
+
     # 干扰项
     distractors = _generate_distractors(kp.text, all_kps, 3)
-    
+
     # 随机排列选项
-    all_options = [correct] + distractors
+    all_options = [correct, *distractors]
     random.shuffle(all_options)
     correct_index = all_options.index(correct)
     correct_label = chr(65 + correct_index)  # A, B, C, D
-    
-    options = [
-        {"option_label": chr(65 + i), "option_content": opt}
-        for i, opt in enumerate(all_options)
-    ]
-    
+
+    options = [{"option_label": chr(65 + i), "option_content": opt} for i, opt in enumerate(all_options)]
+
     return {
         "question_type": "single_choice",
         "content": question_content,
@@ -424,21 +434,20 @@ def rule_generate_single_choice(
 def rule_generate_true_false(
     kp: KnowledgePointInfo,
     all_kps: List[KnowledgePointInfo],
-) -> Optional[dict]:
+) -> dict | None:
     """规则生成判断题"""
     if not kp.description or len(kp.description) < 4:
         return None
-    
+
     # 50% 正确陈述，50% 错误陈述
     is_correct = random.choice([True, False])
-    
+
     if is_correct:
         # 正确陈述：同义替换
         statement = _synonym_replace(kp.description[:100])
     else:
         # 错误陈述：从其他知识点偷换概念
-        other_descs = [kp2.description for kp2 in all_kps 
-                       if kp2.description and kp2.id != kp.id]
+        other_descs = [kp2.description for kp2 in all_kps if kp2.description and kp2.id != kp.id]
         if other_descs:
             wrong_desc = random.choice(other_descs)[:80]
             statement = f"{kp.name}{_synonym_replace(wrong_desc)}"
@@ -449,10 +458,10 @@ def rule_generate_true_false(
             statement = statement.replace("应当", "不需要").replace("必须", "无需")
             if statement == _synonym_replace(kp.description[:60]):
                 return None  # 无法生成有效错误陈述
-    
+
     assertion = random.choice(TRUE_FALSE_MODIFIERS["assert_true" if is_correct else "assert_false"])
     question_content = f"{statement}{assertion}。"
-    
+
     return {
         "question_type": "true_false",
         "content": question_content,
@@ -466,20 +475,20 @@ def rule_generate_true_false(
 def rule_generate_multiple_choice(
     kp: KnowledgePointInfo,
     all_kps: List[KnowledgePointInfo],
-) -> Optional[dict]:
+) -> dict | None:
     """规则生成多选题"""
     if not kp.description or len(kp.description) < 4:
         return None
 
     # 从知识点描述中拆出多个要点（简单策略：按逗号、顿号、分号拆分）
-    parts = re.split(r'[，、；]', kp.description)
+    parts = re.split(r"[，、；]", kp.description)
     parts = [p.strip() for p in parts if len(p.strip()) > 3]
 
     if len(parts) < 2:
         # 知识点描述不可拆分，用其他知识点补充
         for other_kp in all_kps:
             if other_kp.id != kp.id and other_kp.description:
-                other_parts = re.split(r'[，、；]', other_kp.description)
+                other_parts = re.split(r"[，、；]", other_kp.description)
                 parts.extend([p.strip() for p in other_parts if len(p.strip()) > 3])
         if len(parts) < 2:
             return None  # 仍然不够，跳过
@@ -517,7 +526,7 @@ def rule_generate_multiple_choice(
 def rule_generate_essay(
     kp: KnowledgePointInfo,
     all_kps: List[KnowledgePointInfo],
-) -> Optional[dict]:
+) -> dict | None:
     """规则生成问答题"""
     if not kp.description or len(kp.description) < 10:
         return None
@@ -623,25 +632,27 @@ def rule_generate_questions(plan: QuestionPlan) -> List[dict]:
 # 第五层：AI策略出题 Prompt 构建
 # ──────────────────────────────────────────────
 
+
 def build_strategic_prompt(
     plan: QuestionPlan,
     subject_name: str,
     chapter_names: List[str],
     difficulty: int,
+    template_prompt: str | None = None,
 ) -> str:
     """构建带策略的AI出题prompt
-    
+
     关键：把知识点类型、出题策略、题型分配都放进prompt，
     让AI按策略精准出题，而不是通用地出题。
     """
     difficulty_label = {1: "简单", 2: "较简单", 3: "中等", 4: "较难", 5: "困难"}.get(difficulty, "中等")
-    
-    # 构建知识点内容
+
+    # 构建知识点内容（含 excerpt 原文参考，适当放宽截断阈值）
     kp_texts = [kp.text for kp in plan.knowledge_points]
     knowledge_content = "\n".join(kp_texts)
-    if len(knowledge_content) > 4000:
-        knowledge_content = knowledge_content[:4000] + "\n...(更多知识点已省略)"
-    
+    if len(knowledge_content) > 6000:
+        knowledge_content = knowledge_content[:6000] + "\n...(更多知识点已省略)"
+
     # 题型分配说明
     mix_parts = []
     type_name_map = {
@@ -654,7 +665,35 @@ def build_strategic_prompt(
         count = max(1, round(plan.total_count * ratio))
         mix_parts.append(f"- {type_name_map.get(qtype, qtype)}：{count}道")
     mix_description = "\n".join(mix_parts)
-    
+
+    # 如果用户选择了自定义模板，优先使用模板 prompt
+    if template_prompt:
+        safe_template = template_prompt.strip()
+        if safe_template:
+            return f'''{safe_template}
+
+科目："{subject_name}"
+章节：{"、".join(chapter_names) if chapter_names else "全章节"}
+难度：{difficulty_label}（1-5级）
+
+【知识点参考内容】
+---
+{knowledge_content}
+---
+
+【题型分配要求】
+{mix_description}
+
+请严格按照上述模板指令和题型分配来生成题目。返回JSON数组格式，每道题目包含：
+- question_type: 题型（single_choice/multiple_choice/true_false/essay）
+- content: 题目内容
+- answer: 正确答案（单选为"A"，多选为"A,B"，判断为"true"/"false"）
+- explanation: 详细解析
+- difficulty: 难度等级（{difficulty}）
+- options: 数组，仅选择题有此字段，每个选项包含option_label和option_content
+
+请直接返回JSON数组，不要包含任何其他文字。'''
+
     prompt = f'''你是一个专业的试题生成助手。请根据以下知识点和出题策略生成{plan.total_count}道题目。
 
 科目："{subject_name}"
@@ -690,7 +729,7 @@ def build_strategic_prompt(
    - options: 数组，仅选择题有此字段，每个选项包含option_label和option_content
 
 请直接返回JSON数组，不要包含任何其他文字。'''
-    
+
     return prompt
 
 
@@ -698,76 +737,77 @@ def build_strategic_prompt(
 # 第六层：从数据库构建知识点信息
 # ──────────────────────────────────────────────
 
+
 def build_kp_info_list(db, knowledge_point_ids: List[int]) -> List[KnowledgePointInfo]:
     """从数据库查询知识点，构建知识点信息列表
-    
+
     优化策略：先批量查询所有选中节点的子树，避免N+1递归查询。
     使用一次性查询获取整个子树，然后在内存中构建树结构。
     """
     if not knowledge_point_ids:
         return []
-    
+
     # 查询选中的知识点
-    selected_kps = db.query(KnowledgePoint).filter(
-        KnowledgePoint.id.in_(knowledge_point_ids),
-        KnowledgePoint.status == 1
-    ).all()
-    
+    selected_kps = (
+        db.query(KnowledgePoint).filter(KnowledgePoint.id.in_(knowledge_point_ids), KnowledgePoint.status == 1).all()
+    )
+
     if not selected_kps:
         return []
-    
+
     # 收集所有选中节点的ID，以及它们的category和exam_type用于批量查询子树
     selected_ids = {kp.id for kp in selected_kps}
-    
+
     # 一次性查询所有可能相关的知识点（同category/exam_type下的）
     # 这样避免了递归N+1查询，一次性把所有需要的节点都取出来
     categories = {kp.category for kp in selected_kps if kp.category}
     exam_types = {kp.exam_type for kp in selected_kps if kp.exam_type}
-    
+
     # 批量查询：获取同类别下的所有知识点，然后在内存中筛选子树
     query = db.query(KnowledgePoint).filter(KnowledgePoint.status == 1)
     if categories:
         query = query.filter(KnowledgePoint.category.in_(categories))
     elif exam_types:
         query = query.filter(KnowledgePoint.exam_type.in_(exam_types))
-    
+
     all_kps = query.order_by(KnowledgePoint.order).all()
     logger.info(f"批量查询知识点: 选中{len(selected_ids)}个, 同类别共{len(all_kps)}个")
-    
+
     # 在内存中构建 parent_id → children 映射
     children_map: Dict[int, List[KnowledgePoint]] = {}
     kp_by_id: Dict[int, KnowledgePoint] = {}
     for kp in all_kps:
         kp_by_id[kp.id] = kp
         children_map.setdefault(kp.parent_id, []).append(kp)
-    
+
     # 从选中的节点出发，在内存中递归收集子树
     info_list = []
     visited_ids = set()
-    
+
     def _collect_in_memory(kp_id: int, parent_name: str = ""):
         if kp_id in visited_ids:
             return
         visited_ids.add(kp_id)
-        
+
         kp = kp_by_id.get(kp_id)
         if not kp:
             return
-        
+
         info = KnowledgePointInfo(
             id=kp.id,
             name=kp.name,
             description=kp.description or "",
+            excerpt=kp.content_excerpt or "",
             parent_name=parent_name,
         )
         info_list.append(info)
-        
+
         # 递归收集子节点（从内存映射中获取，不再查数据库）
         for child in children_map.get(kp_id, []):
             _collect_in_memory(child.id, parent_name=kp.name)
-    
+
     for kp in selected_kps:
         _collect_in_memory(kp.id)
-    
+
     logger.info(f"知识点收集完成: {len(info_list)} 个知识点")
     return info_list

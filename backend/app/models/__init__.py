@@ -1,5 +1,36 @@
-from app.models.question import Subject, Chapter, Question, QuestionOption, ExamPaper, ExamRecord, UserAnswer, AIPromptTemplate, AICallLog
-from app.models.user import User
-from app.models.knowledge import KnowledgePoint
+from app.models.knowledge import KnowledgeBase, KnowledgeEntry, KnowledgePoint
+from app.models.paper_template import PaperTemplate
+from app.models.paper_version import PaperVersion
 from app.models.password_reset import PasswordResetRequest
-__all__ = ["Subject", "Chapter", "Question", "QuestionOption", "ExamPaper", "ExamRecord", "UserAnswer", "AIPromptTemplate", "AICallLog", "User", "KnowledgePoint", "PasswordResetRequest"]
+from app.models.question import (
+    AICallLog,
+    AIPromptTemplate,
+    Chapter,
+    ExamPaper,
+    ExamRecord,
+    Question,
+    QuestionOption,
+    Subject,
+    UserAnswer,
+)
+from app.models.user import User
+
+__all__ = [
+    "AICallLog",
+    "AIPromptTemplate",
+    "Chapter",
+    "ExamPaper",
+    "ExamPaperQuestion",
+    "ExamRecord",
+    "KnowledgeBase",
+    "KnowledgeEntry",
+    "KnowledgePoint",
+    "PaperTemplate",
+    "PaperVersion",
+    "PasswordResetRequest",
+    "Question",
+    "QuestionOption",
+    "Subject",
+    "User",
+    "UserAnswer",
+]

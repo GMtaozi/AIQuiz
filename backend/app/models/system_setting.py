@@ -1,11 +1,14 @@
 """System Setting Model"""
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
+
+from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 
 class SystemSetting(Base):
     """系统设置模型"""
+
     __tablename__ = "system_settings"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

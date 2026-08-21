@@ -68,8 +68,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 __all__ = [
     "Base",
-    "engine",
     "SessionLocal",
+    "engine",
     "get_db",
     "get_db_context",
     "init_db",

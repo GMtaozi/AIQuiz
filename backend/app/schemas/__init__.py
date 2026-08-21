@@ -1,9 +1,21 @@
-from app.schemas.user import UserCreate, UserLogin, UserResponse, Token, TokenData
 from app.schemas.question import (
-    SubjectCreate, SubjectUpdate, SubjectResponse,
-    ChapterCreate, ChapterUpdate, ChapterResponse, ChapterTreeResponse,
-    QuestionCreate, QuestionUpdate, QuestionResponse, QuestionDetailResponse,
-    QuestionOptionCreate, QuestionOptionResponse,
-    AiTemplateCreate, AiTemplateUpdate, AiTemplateResponse,
+    AiTemplateCreate,
+    AiTemplateResponse,
+    AiTemplateUpdate,
+    ChapterCreate,
+    ChapterResponse,
+    ChapterTreeResponse,
+    ChapterUpdate,
+    QuestionCreate,
+    QuestionDetailResponse,
+    QuestionOptionCreate,
+    QuestionOptionResponse,
+    QuestionResponse,
+    QuestionUpdate,
+    SubjectCreate,
+    SubjectResponse,
+    SubjectUpdate,
 )
+from app.schemas.user import Token, TokenData, UserCreate, UserLogin, UserResponse
+
 __all__ = []

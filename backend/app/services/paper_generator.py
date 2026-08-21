@@ -8,10 +8,9 @@ question type and difficulty distribution.
 import random
 from typing import Any
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
-from app.database import async_session_maker, Question
+from app.database import Question, async_session_maker
 
 
 class InsufficientQuestionsError(Exception):
@@ -100,9 +99,7 @@ async def auto_generate_paper(
         selected_questions: list[Question] = []
         selected_ids: set[int] = set()
 
-        for (difficulty, q_type), needed in sorted(
-            required_counts.items(), key=lambda x: -x[0][0]
-        ):
+        for (difficulty, q_type), needed in sorted(required_counts.items(), key=lambda x: -x[0][0]):
             pool = [q for q in grouped.get((difficulty, q_type), []) if q.id not in selected_ids]
 
             if len(pool) < needed:
@@ -143,11 +140,13 @@ async def auto_generate_paper(
             options_detail = []
             if question.options:
                 for opt in sorted(question.options, key=lambda o: o.order or 0):
-                    options_detail.append({
-                        "option_label": opt.option_label,
-                        "option_content": opt.option_content,
-                        "is_correct": opt.is_correct,
-                    })
+                    options_detail.append(
+                        {
+                            "option_label": opt.option_label,
+                            "option_content": opt.option_content,
+                            "is_correct": opt.is_correct,
+                        }
+                    )
 
             question_detail = {
                 "content": question.content,
@@ -158,12 +157,14 @@ async def auto_generate_paper(
                 "options": options_detail,
             }
 
-            questions_output.append({
-                "question_id": question.id,
-                "order": order,
-                "score": per_question_score,
-                "question_detail": question_detail,
-            })
+            questions_output.append(
+                {
+                    "question_id": question.id,
+                    "order": order,
+                    "score": per_question_score,
+                    "question_detail": question_detail,
+                }
+            )
 
         return {
             "questions": questions_output,
