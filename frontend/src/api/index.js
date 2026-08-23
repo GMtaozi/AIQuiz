@@ -33,7 +33,9 @@ api.interceptors.response.use(
   error => {
     const originalRequest = error.config || {}
     const url = originalRequest.url || ''
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/refresh')
+    // 认证端点的 401 不做刷新重放（登录失败/登出时 cookie 已失效，重试只会空转）
+    const isAuthEndpoint =
+      url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
     // 401 且非认证端点：先尝试刷新 cookie 并重放一次（每个请求最多重试一次）
     if (error.response?.status === 401 && !originalRequest._retried && !isAuthEndpoint) {

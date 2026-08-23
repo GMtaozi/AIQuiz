@@ -48,18 +48,14 @@ const examTitleOf = (row) => titles.value[row.exam_paper_id] ?? `考试 #${row.e
 onMounted(async () => {
   loading.value = true
   try {
-    const res = await api.get('/exam-records')
-    records.value = Array.isArray(res.data) ? res.data : []
-    // 补齐考试标题（去重拉取详情）
-    const ids = [...new Set(records.value.map((r) => r.exam_paper_id))]
-    await Promise.all(
-      ids.map(async (id) => {
-        try {
-          const r = await api.get(`/exams/${id}`)
-          titles.value[id] = r.data?.title
-        } catch { /* 标题缺失不阻塞列表 */ }
-      })
-    )
+    const [recRes, examRes] = await Promise.all([api.get('/exam-records'), api.get('/exams')])
+    records.value = Array.isArray(recRes.data) ? recRes.data : []
+    // 一次拉考试列表建标题映射（避免逐条详情 N+1）
+    const map = {}
+    for (const e of Array.isArray(examRes.data) ? examRes.data : []) {
+      map[e.exam_paper_id ?? e.id] = e.title
+    }
+    titles.value = map
   } catch (e) {
     ElMessage.error(e.message || '加载成绩失败')
   } finally {

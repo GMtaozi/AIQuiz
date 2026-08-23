@@ -12,6 +12,7 @@
 Docker 部署由 compose 中的 worker 服务自动运行。
 """
 import asyncio
+from functools import lru_cache
 import logging
 from typing import Callable, List
 
@@ -28,8 +29,13 @@ _CANCEL_KEY_PREFIX = "aiquiz:cancel:task:"
 _CANCEL_TTL_SECONDS = 3600
 
 
+@lru_cache(maxsize=1)
 def get_sync_redis() -> redis_sync.Redis:
-    """同步 Redis 客户端（取消标志读写专用；worker 线程内无法复用 async 连接）。"""
+    """同步 Redis 客户端（取消标志读写专用）。
+
+    redis-py 的连接池本身线程安全，进程内复用单例即可
+    （审计修复：原每次检查新建实例，AI 批量出题场景反复建连）。
+    """
     return redis_sync.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
@@ -52,7 +58,7 @@ def clear_cancel_flag(task_id: int) -> None:
 
 
 def _make_cancel_checker(task_id: int) -> Callable[[], bool]:
-    """构造任务内部使用的取消检查函数（每次检查新建短连接，避免线程安全问题）。"""
+    """构造任务内部使用的取消检查函数。"""
 
     def _check() -> bool:
         try:

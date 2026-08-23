@@ -41,6 +41,35 @@ class ExamStatus(str, enum.Enum):
 AUTO_GRADABLE_TYPES = {"single_choice", "multiple_choice", "true_false"}
 
 
+def _parse_naive_utc(value) -> datetime | None:
+    """解析配置中的时间字符串为 naive UTC（ISO 格式兼容 Z 后缀；非法返回 None）。"""
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _check_exam_access(exam_paper: ExamPaper, current_user: User) -> dict:
+    """考生名单与时间窗统一校验（审计修复：原 ISO 字符串字典序比较在
+    格式不一致时会错判，如 "2026-8-1" vs "2026-08-01"、Z 与 +00:00 混用）。
+
+    返回 exam config 供调用方复用。名单外/未开始/已结束一律 403。
+    """
+    config = exam_paper.config or {}
+    student_ids = config.get("student_ids")
+    if student_ids and current_user.id not in student_ids:
+        raise HTTPException(status_code=403, detail="您不在本场考试的考生名单中")
+    now = datetime.utcnow()
+    start = _parse_naive_utc(config.get("start_time"))
+    end = _parse_naive_utc(config.get("end_time"))
+    if start and now < start:
+        raise HTTPException(status_code=403, detail="考试尚未开始")
+    if end and now > end:
+        raise HTTPException(status_code=403, detail="考试已结束")
+    return config
+
+
 def get_correct_answer(db: Session, question: Question) -> dict | None:
     """Get correct answer for a question."""
     if question.question_type == "single_choice" or question.question_type == "true_false":
@@ -62,24 +91,63 @@ def get_correct_answer(db: Session, question: Question) -> dict | None:
     return None
 
 
-def grade_answer(question: Question, user_answer_content: str, correct_answer: dict) -> tuple[bool, float]:
-    """Grade a single answer. Returns (is_correct, score)."""
+def grade_answer(
+    question: Question, user_answer_content: str, correct_answer: dict, full_score: float | None = None
+) -> tuple[bool, float]:
+    """Grade a single answer. Returns (is_correct, score).
+
+    full_score: 本场考试的卷面分值；缺省回退题库默认分。
+    （审计修复：多份试卷引用同一题且分值不同时，必须按卷面分判分。）
+    """
     if correct_answer is None:
         return False, 0.0
 
     question_type = correct_answer["type"]
     correct = correct_answer["answer"]
+    score_value = float(full_score if full_score is not None else question.score)
 
     if question_type == "single_choice" or question_type == "true_false":
         is_correct = user_answer_content.strip().lower() == str(correct).lower()
-        return is_correct, float(question.score) if is_correct else 0.0
+        return is_correct, score_value if is_correct else 0.0
     elif question_type == "multiple_choice":
         user_answers = sorted([ans.strip() for ans in user_answer_content.split(",")])
         correct_list = correct if isinstance(correct, list) else [correct]
         is_correct = user_answers == sorted(correct_list)
-        return is_correct, float(question.score) if is_correct else 0.0
+        return is_correct, score_value if is_correct else 0.0
 
     return False, 0.0
+
+
+def _auto_grade_objectives(db: Session, record: ExamRecord) -> tuple[float, bool]:
+    """自动判分客观题（写入 UserAnswer.is_correct/score）。
+
+    分值按 ExamPaperQuestion.score（卷面分）。
+    返回 (客观题总得分, 卷面是否含主观题)。
+    主观题留待人工批阅；调用方据此决定 record.status。
+    """
+    paper_scores: dict[int, float] = {
+        pq.question_id: pq.score
+        for pq in db.query(ExamPaperQuestion)
+        .filter(ExamPaperQuestion.exam_paper_id == record.exam_paper_id)
+        .all()
+    }
+    questions = (
+        db.query(Question).filter(Question.id.in_(paper_scores.keys())).all() if paper_scores else []
+    )
+    has_subjective = any(q.question_type not in AUTO_GRADABLE_TYPES for q in questions)
+
+    user_answers = db.query(UserAnswer).filter(UserAnswer.exam_record_id == record.id).all()
+    total = 0.0
+    for ua in user_answers:
+        q = next((x for x in questions if x.id == ua.question_id), None)
+        if q is None or q.question_type not in AUTO_GRADABLE_TYPES:
+            continue
+        correct = get_correct_answer(db, q)
+        is_correct, score = grade_answer(q, ua.answer_content or "", correct, paper_scores.get(q.id))
+        ua.is_correct = is_correct
+        ua.score = score
+        total += score
+    return total, has_subjective
 
 
 # ============ Endpoints ============
@@ -212,15 +280,7 @@ def get_exam_questions_for_student(
     if not exam_paper:
         raise HTTPException(status_code=404, detail="考试不存在")
 
-    config = exam_paper.config or {}
-    student_ids = config.get("student_ids")
-    if student_ids and current_user.id not in student_ids:
-        raise HTTPException(status_code=403, detail="您不在本场考试的考生名单中")
-    now_iso = datetime.utcnow().isoformat()
-    if config.get("start_time") and now_iso < str(config["start_time"]):
-        raise HTTPException(status_code=403, detail="考试尚未开始")
-
-    from app.models.question import QuestionOption
+    _check_exam_access(exam_paper, current_user)
 
     rows = (
         db.query(ExamPaperQuestion, Question)
@@ -330,16 +390,8 @@ def start_exam(
     if not exam_paper:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    # 评估 P1-12 修复：考生名单与时间窗校验
-    config = exam_paper.config or {}
-    exam_student_ids = config.get("student_ids")
-    if exam_student_ids and current_user.id not in exam_student_ids:
-        raise HTTPException(status_code=403, detail="您不在本场考试的考生名单中")
-    now_iso = datetime.utcnow().isoformat()
-    if config.get("start_time") and now_iso < str(config["start_time"]):
-        raise HTTPException(status_code=403, detail="考试尚未开始")
-    if config.get("end_time") and now_iso > str(config["end_time"]):
-        raise HTTPException(status_code=403, detail="考试已结束")
+    # 考生名单与时间窗校验（评估 P1-12；审计修复改为 datetime 解析比较）
+    _check_exam_access(exam_paper, current_user)
 
     # Determine which students to create records for
     student_ids = [current_user.id]
@@ -439,6 +491,15 @@ def submit_exam(
         record.status = "submitted"
         record.submitted_at = datetime.utcnow()
 
+        # 审计修复：交卷即自动判分客观题（此前需教师逐个手动触发，闭环断裂）。
+        # NOTE: SessionLocal 为 autoflush=False，必须先 flush 才能让下方
+        # 判分查询看到本事务内新增的 UserAnswer。
+        db.flush()
+        total, has_subjective = _auto_grade_objectives(db, record)
+        record.score = total
+        if not has_subjective:
+            record.status = "graded"  # 纯客观卷直接出分
+
         db.commit()
         db.refresh(record)
     except Exception as e:
@@ -473,6 +534,12 @@ def grade_exam(
     # Get user answers for this exam record
     user_answers = db.query(UserAnswer).filter(UserAnswer.exam_record_id == grade_request.exam_record_id).all()
 
+    # 卷面分映射（审计修复：按本场考试分值判分，而非题库默认分）
+    paper_scores = {
+        pq.question_id: pq.score
+        for pq in db.query(ExamPaperQuestion).filter(ExamPaperQuestion.exam_paper_id == exam_id).all()
+    }
+
     total_score = 0.0
     graded_count = 0
     results = []
@@ -486,7 +553,9 @@ def grade_exam(
             continue
 
         correct_answer = get_correct_answer(db, question)
-        is_correct, score = grade_answer(question, ua.answer_content or "", correct_answer)
+        is_correct, score = grade_answer(
+            question, ua.answer_content or "", correct_answer, paper_scores.get(question.id)
+        )
 
         ua.is_correct = is_correct
         ua.score = score
