@@ -29,7 +29,7 @@ from app.services.hybrid_question_generator import (
     rule_generate_questions,
 )
 from app.utils.rate_limit import rate_limit_ai_gen
-from app.utils.security import require_teacher_or_admin
+from app.utils.security import require_license_feature, require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -179,6 +179,7 @@ async def generate_questions_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
     _rate_limit: None = Depends(rate_limit_ai_gen),
+    _license: None = Depends(require_license_feature("ai_question")),
 ):
     """Generate questions using AI with retry and circuit breaker"""
     if request.template_id:
@@ -295,6 +296,7 @@ async def hybrid_generate_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
     _rate_limit: None = Depends(rate_limit_ai_gen),
+    _license: None = Depends(require_license_feature("ai_question")),
 ):
     """混合出题：规则引擎做策略规划，AI按策略灵活执行"""
     if request.mode not in ("hybrid", "rule_only", "ai_only"):

@@ -17,7 +17,7 @@ from app.models.question import GenerationTask
 from app.models.user import User
 from app.schemas.question import AsyncGenerateRequest, AsyncTaskResponse, TaskProgressResponse
 from app.utils.rate_limit import rate_limit_ai_gen
-from app.utils.security import get_current_user, require_teacher_or_admin
+from app.utils.security import get_current_user, require_license_feature, require_teacher_or_admin
 from app.worker import set_cancel_flag
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ def hybrid_generate_async(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
     _rate_limit: None = Depends(rate_limit_ai_gen),
+    _license: None = Depends(require_license_feature("ai_question")),
 ):
     """异步出题：立即返回任务ID，ARQ worker 后台执行，前端轮询进度"""
     task = _create_task(db, current_user.id, request.mode, request.model_dump())
@@ -123,6 +124,7 @@ def regenerate_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
     _rate_limit: None = Depends(rate_limit_ai_gen),
+    _license: None = Depends(require_license_feature("ai_question")),
 ):
     """根据已有任务参数重新生成一道新任务"""
     original = db.query(GenerationTask).filter(GenerationTask.id == task_id).first()

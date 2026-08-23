@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     environment: str = "development"  # development / staging / production
     log_json: bool = False  # 生产建议 true，输出 JSON 结构化日志
 
+    # License 授权文件路径（相对后端工作目录；缺失则进入试用模式）
+    license_file: str = "license.key"
+
 
 def validate_settings() -> None:
     """Validate critical settings on startup.

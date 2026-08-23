@@ -61,3 +61,7 @@ gui-test-screenshots/
 
 # 运维：数据库备份输出
 deploy/backups/
+
+# 商业授权文件（客户资产，绝不入库）
+backend/license.key
+*.license.key

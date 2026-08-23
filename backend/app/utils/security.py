@@ -121,6 +121,25 @@ def require_editor_or_admin(user: User = Depends(get_current_user)) -> User:
 require_teacher_or_admin = require_editor_or_admin
 
 
+def require_license_feature(feature: str):
+    """商业化授权门控：增值特性需有效 License 或未过期的试用。
+
+    用法: Depends(require_license_feature("ai_question"))
+    试用期内全特性放行；正式授权看签名中的 features；均不满足 → 403。
+    """
+    from app.services.license_service import license_service
+
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if not license_service.feature_enabled(feature):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"功能「{feature}」需要有效的商业授权（当前授权不可用或已过期），请联系供应商",
+            )
+        return user
+
+    return dependency
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
     """Require user to have admin (1) role."""
     if user.role != UserRole.ADMIN:

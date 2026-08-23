@@ -118,6 +118,15 @@ def create_user(
     db: Session = Depends(get_db),
 ):
     """创建用户"""
+    # 商业化：用户数受 License 上限约束（试用/永久授权不限时不校验）
+    from app.services.license_service import license_service
+
+    if license_service.user_limit_reached(db.query(User).count()):
+        raise HTTPException(
+            status_code=403,
+            detail=f"已达授权用户数上限（{license_service.state.get('max_users')}），请升级授权",
+        )
+
     existing = db.query(User).filter((User.username == data.username) | (User.email == data.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="用户名或邮箱已存在")

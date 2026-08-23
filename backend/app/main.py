@@ -45,6 +45,18 @@ async def lifespan(app: FastAPI):
 
     setup_logging(debug=settings.debug, json_format=settings.log_json)
     init_sentry(settings.sentry_dsn, settings.environment)
+    # 商业授权加载（无效/缺失自动进入试用模式，不阻塞启动）
+    try:
+        from app.database import SessionLocal as _SessionLocal
+        from app.services.license_service import license_service
+
+        _db = _SessionLocal()
+        try:
+            license_service.load(_db)
+        finally:
+            _db.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"License 加载失败（进入试用判定）: {e}")
     try:
         from app.database import SessionLocal
         from app.routers.system import init_default_settings
