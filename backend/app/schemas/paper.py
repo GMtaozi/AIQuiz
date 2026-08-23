@@ -230,7 +230,7 @@ class ExamPaperQuestionResponse(BaseModel):
     question_id: int
     order: int
     score: float
-    question: "QuestionInPaperResponse"
+    question: QuestionInPaperResponse
 
     model_config = ConfigDict(from_attributes=True)
 

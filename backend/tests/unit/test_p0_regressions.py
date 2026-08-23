@@ -6,7 +6,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.question import ExamPaper, GenerationTask, Question, Subject, Chapter
+from app.models.question import Chapter, ExamPaper, GenerationTask, Question, Subject
 from app.models.user import User
 from app.services.auth import AuthService
 

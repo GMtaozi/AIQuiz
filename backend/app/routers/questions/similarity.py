@@ -1,7 +1,7 @@
 """Question Similarity Detection Router"""
 
-import logging
 from collections import Counter
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query

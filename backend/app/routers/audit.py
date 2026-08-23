@@ -12,8 +12,14 @@ from app.constants import UserRole
 from app.database import get_db
 from app.models.question import AuditLog, Question
 from app.models.user import User
-from app.schemas.audit import AuditListResponse, AuditLogResponse, AuditQuestionResponse, BatchAuditRequest, RejectRequest
-from app.utils.security import get_current_user, require_teacher_or_admin, require_permission
+from app.schemas.audit import (
+    AuditListResponse,
+    AuditLogResponse,
+    AuditQuestionResponse,
+    BatchAuditRequest,
+    RejectRequest,
+)
+from app.utils.security import get_current_user, require_permission, require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["audit"])

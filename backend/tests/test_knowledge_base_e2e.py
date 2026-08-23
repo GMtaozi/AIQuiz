@@ -1,6 +1,6 @@
 """End-to-end test for the three-layer knowledge base architecture."""
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy.orm import Session
 
 from app.main import app

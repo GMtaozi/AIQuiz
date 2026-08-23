@@ -524,7 +524,7 @@ class AIProvider:
             logger.error(f"百度API异常: {exc}")
             return AIResponse(error_message=str(exc))
 
-    async def _get_baidu_access_token(self, api_key: str) -> Optional[str]:
+    async def _get_baidu_access_token(self, api_key: str) -> str | None:
         """获取百度API access_token（API Key 格式为 client_id:client_secret）"""
         try:
             parts = api_key.split(":")
@@ -601,11 +601,11 @@ class AIProvider:
             else:
                 return {"success": False, "message": f"连接失败: {result.error_message or '未收到响应'}"}
         except Exception as e:
-            return {"success": False, "message": f"连接失败: {str(e)}"}
+            return {"success": False, "message": f"连接失败: {e!s}"}
 
 
 # 全局单例
-_ai_provider: Optional[AIProvider] = None
+_ai_provider: AIProvider | None = None
 
 
 def get_ai_provider() -> AIProvider:

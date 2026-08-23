@@ -16,7 +16,6 @@ from app.routers.system._helpers import (
     init_default_settings,
     save_role_permissions,
 )
-from app.services.settings_service import get_role_permissions_config
 from app.routers.system.schemas import (
     AIConfigResponse,
     AIConfigUpdate,
@@ -28,6 +27,7 @@ from app.routers.system.schemas import (
     SettingsResponse,
     SettingUpdateRequest,
 )
+from app.services.settings_service import get_role_permissions_config
 from app.utils.security import get_current_user, require_admin
 
 logger = logging.getLogger(__name__)

@@ -3,9 +3,9 @@
 评估 P2-1：智能组卷/预览/大纲/A-B 卷端点已抽取到 papers_generate 模块。
 """
 
+from datetime import datetime
 import io
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -62,7 +62,6 @@ STATUS_MAP_STR_TO_INT = {
 }
 
 # --- Schemas ---
-from typing import Any
 
 # Update forward references
 PaperCreateFixed.model_rebuild()

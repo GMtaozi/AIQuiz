@@ -1,6 +1,6 @@
 """Paper Template Model"""
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, SmallInteger, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 

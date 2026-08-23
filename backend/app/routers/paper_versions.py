@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.paper_version import PaperVersion
 from app.models.user import User
-from app.schemas.paper_version import PaperVersionCreate, PaperVersionResponse, PaperVersionListResponse
+from app.schemas.paper_version import PaperVersionCreate, PaperVersionListResponse, PaperVersionResponse
 from app.utils.security import get_current_user, require_teacher_or_admin
 
 router = APIRouter(tags=["paper-versions"])

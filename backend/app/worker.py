@@ -15,9 +15,9 @@ import asyncio
 import logging
 from typing import Callable, List
 
-import redis as redis_sync
 from arq import func
 from arq.connections import RedisSettings
+import redis as redis_sync
 
 from app.config import settings
 

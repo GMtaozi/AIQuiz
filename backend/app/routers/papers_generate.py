@@ -97,6 +97,7 @@ from app.services.paper_doc_exporter import (
     _make_chinese_run,
 )
 
+
 @router.post("/auto-generate/preview")
 def preview_auto_generate(
     request: AutoGeneratePreviewRequest,
