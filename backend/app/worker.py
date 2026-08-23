@@ -108,9 +108,8 @@ class WorkerSettings:
     functions = [func(run_generation_task, name="run_generation_task")]
     on_startup = recover_stale_tasks
 
-    @staticmethod
-    def redis_settings() -> RedisSettings:
-        return RedisSettings.from_dsn(settings.redis_url)
+    # NOTE: 必须是类属性（RedisSettings 实例），ARQ 内部直接访问 .host 等字段
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
 
     # 并发出题上限（对应原 BoundedSemaphore(20)）
     max_jobs = 20

@@ -47,6 +47,20 @@ async def _consume_body(response: Response) -> bytes:
     return b"".join(chunks)
 
 
+def _inherit_headers(new_response: Response, old_response: Response) -> None:
+    """继承原响应头到新响应（raw 级操作，多值头如 Set-Cookie 安全）。
+
+    跳过 content-length / content-type —— 它们由新响应根据实际 body 重新生成。
+    若沿用旧 content-length，包装后 body 变长会触发
+    uvicorn "Response content longer than Content-Length" 断连。
+    """
+    skip = {b"content-length", b"content-type"}
+    existing = set(new_response.raw_headers)
+    for key, value in old_response.headers.raw:
+        if key.lower() not in skip and (key, value) not in existing:
+            new_response.raw_headers.append((key, value))
+
+
 async def wrap_response(request: Request, response: Response) -> Response:
     """Wrap successful JSON responses in the standard envelope.
 
@@ -70,16 +84,25 @@ async def wrap_response(request: Request, response: Response) -> Response:
     body = await _consume_body(response)
     if not body:
         # 空 body：重建原响应（保留已消费的流）
-        return Response(status_code=response.status_code, headers=dict(response.headers))
+        empty = Response(status_code=response.status_code)
+        _inherit_headers(empty, response)
+        return empty
 
     payload = await _read_json_body(body)
     if payload is None or _is_already_wrapped(payload):
         # 非 JSON 或已封装：原样重建响应
-        return Response(content=body, status_code=response.status_code, headers=dict(response.headers))
+        same = Response(
+            content=body,
+            status_code=response.status_code,
+            media_type="application/json",
+        )
+        _inherit_headers(same, response)
+        return same
 
     wrapped = ApiResponse(code=response.status_code, message="success", data=payload).model_dump()
-    return JSONResponse(
+    wrapped_response = JSONResponse(
         status_code=response.status_code,
         content=wrapped,
-        headers=dict(response.headers),
     )
+    _inherit_headers(wrapped_response, response)
+    return wrapped_response
