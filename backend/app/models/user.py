@@ -5,7 +5,8 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-# 默认角色菜单权限配置
+# 默认角色菜单权限配置（全系统唯一权威来源；
+# security.py 的 require_permission 与登录响应下发均以此为准）
 ROLE_DEFAULT_PERMISSIONS = {
     1: [
         "ai-question",
@@ -13,6 +14,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "auto-paper",
         "question-bank",
         "paper-management",
+        "template-market",
         "knowledge",
         "knowledge-bases",
         "settings",
@@ -24,10 +26,14 @@ ROLE_DEFAULT_PERMISSIONS = {
         "auto-paper",
         "question-bank",
         "paper-management",
+        "template-market",
         "knowledge",
         "knowledge-bases",
     ],
-    3: ["audit", "question-bank"],
+    # 学生：面向考试场景（参加考试/查成绩走 get_current_user + 名单归属校验，
+    # 不依赖菜单权限）。管理端菜单一律不放行；未来学生端页面上线后在此追加
+    # （如 "exam", "exam-records"）。
+    3: [],
 }
 
 

@@ -55,11 +55,12 @@ export const permissionModules: PermissionModule[] = [
   { key: 'settings', name: '系统设置', description: '系统配置和管理', icon: 'Setting' }
 ]
 
-// 评估 P0-7：默认权限与 stores/auth.js 单一来源对齐（含 template-market / knowledge-bases）
+// 角色默认权限模板（UI 展示用）。权威来源是后端 app/models/user.py 的
+// ROLE_DEFAULT_PERMISSIONS；商业化决策已定 role=3 为"学生"，管理端菜单一律不放行。
 export const roleDefaultPermissions: Record<number, string[]> = {
   1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases', 'settings', 'user-permission'],
   2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases'],
-  3: ['audit', 'question-bank']
+  3: []
 }
 
 // ============ State ============
@@ -131,7 +132,7 @@ export const isCustom = (key: string) => {
 }
 
 export const getRoleName = (role: number) => {
-  const names: Record<number, string> = { 1: '管理员', 2: '题库编辑', 3: '审核员' }
+  const names: Record<number, string> = { 1: '管理员', 2: '教师', 3: '学生' }
   return names[role] || '未知'
 }
 

@@ -96,14 +96,16 @@ docker-compose up -d
 - `/api/exam_records` - 考试记录
 
 ### 角色权限
-- `admin` (role=1): 管理员，可管理题库、试卷、系统设置
-- `teacher` (role=2): 教师，可出题、审核
-- `student` (role=3): 学生，可考试、查看成绩
+- `admin` (role=1): 管理员，可管理题库、试卷、系统设置、用户权限
+- `teacher` (role=2): 教师，可出题、审核、组卷、管理知识库
+- `student` (role=3): 学生，可参加考试、查看成绩（考试接口走 get_current_user + 考生名单归属校验，不依赖菜单权限；注册默认无任何菜单权限）
 
 ### 菜单权限系统
-- 用户拥有独立的 `menu_permissions` 字段
+- **权威来源**：后端 `backend/app/models/user.py` 的 `ROLE_DEFAULT_PERMISSIONS`（角色默认）+ 用户个性化 `menu_permissions`（扁平数组，优先）
+- 登录/refresh 响应直接下发有效权限（扁平数组），前端不再维护角色默认表
 - 路由守卫 `router/index.js` 检查权限：无权限用户跳转到 `/no-permission`
-- 支持按用户分配个性化权限（可覆盖角色默认权限）
+- 后端管理接口准入：`require_editor_or_admin`（role 1/2）；细粒度用 `require_permission(key)`
+- 历史别名 `require_teacher_or_admin` 等价于 `require_editor_or_admin`（曾放行 role=3，已收窄）
 
 ### 前端页面 (views/admin/)
 - `DashboardView.vue` - 控制台

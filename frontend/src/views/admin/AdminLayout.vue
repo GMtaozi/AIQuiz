@@ -272,7 +272,7 @@ const currentRoute = computed(() => {
 const hasPermission = (feature) => authStore.hasPermission(feature)
 
 const getRoleName = (role) => {
-  const names = { 1: '管理员', 2: '题库编辑', 3: '审核员' }
+  const names = { 1: '管理员', 2: '教师', 3: '学生' }
   return names[role] || '未知'
 }
 

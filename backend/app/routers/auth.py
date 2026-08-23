@@ -135,7 +135,7 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
 
 @router.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user - defaults to auditor role (3) with NO permissions."""
+    """Register a new user - defaults to student role (3) with NO permissions."""
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="该邮箱已被注册")
@@ -159,11 +159,12 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
     # 生成 token 并返回权限信息
     access_token = AuthService.create_access_token({"sub": str(db_user.id), "role": db_user.role})
+    # 权限单一来源改造：响应统一为扁平数组，前端不再自行解析角色映射
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "role": db_user.role,
-        "menu_permissions": {str(db_user.role): []},
+        "menu_permissions": [],
         "needs_admin_approval": True,  # 标记需要管理员分配完整权限
     }
 
@@ -195,7 +196,7 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
             "access_token": access_token,
             "token_type": "bearer",
             "role": user.role,
-            "menu_permissions": {user.role: user_permissions},
+            "menu_permissions": user_permissions,
         },
     )
     # 评估 P1-4：同时设置 httpOnly cookie
@@ -218,9 +219,9 @@ def login_json(credentials: UserLogin, db: Session = Depends(get_db)):
 
     _record_success(credentials.username)
     _log_operation(user.id, "用户登录", f"用户: {user.username}")
-    # 获取该角色的权限配置
+    # 与 /login 一致：个性化 menu_permissions 优先，角色默认兜底
     role_perms = get_role_permissions_config()
-    user_permissions = role_perms.get(user.role, ROLE_DEFAULT_PERMISSIONS.get(user.role, []))
+    user_permissions = _get_effective_permissions(user, role_perms)
     access_token = AuthService.create_access_token({"sub": str(user.id), "role": user.role})
     response = JSONResponse(
         status_code=200,
@@ -228,7 +229,7 @@ def login_json(credentials: UserLogin, db: Session = Depends(get_db)):
             "access_token": access_token,
             "token_type": "bearer",
             "role": user.role,
-            "menu_permissions": {user.role: user_permissions},
+            "menu_permissions": user_permissions,
         },
     )
     # 评估 P1-4：同时设置 httpOnly cookie
@@ -264,7 +265,7 @@ def refresh_token(current_user: User = Depends(get_current_user)):
         content={
             "access_token": access_token,
             "token_type": "bearer",
-            "menu_permissions": {current_user.role: user_permissions},
+            "menu_permissions": user_permissions,
         },
     )
     return _set_auth_cookie(response, access_token)

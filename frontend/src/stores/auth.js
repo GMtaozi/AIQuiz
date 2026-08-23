@@ -47,21 +47,11 @@ export const useAuthStore = defineStore('auth', () => {
     api.post('/auth/logout').catch(() => {})
   }
 
-  function getDefaultPermissions(role) {
-    // 评估 P0-7：单一默认权限来源（与菜单/路由 meta.permission 对齐）
-    const defaults = {
-      1: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases', 'settings', 'user-permission'],
-      2: ['ai-question', 'audit', 'auto-paper', 'question-bank', 'paper-management', 'template-market', 'knowledge', 'knowledge-bases'],
-      3: ['audit', 'question-bank']
-    }
-    return defaults[role] || defaults[3]
-  }
-
   function hasPermission(permission) {
     if (!user.value) return false
     // 管理员拥有所有权限
     if (user.value.role === 1) return true
-    // 获取用户实际权限
+    // 权限单一来源：后端登录时下发有效权限（扁平数组），前端不再维护角色默认表
     const userPerms = user.value.menu_permissions
     if (Array.isArray(userPerms)) {
       return userPerms.includes(permission)
@@ -71,19 +61,15 @@ export const useAuthStore = defineStore('auth', () => {
       const perms = userPerms[roleKey] || userPerms[user.value.role] || []
       return Array.isArray(perms) ? perms.includes(permission) : false
     }
-    // 如果没有个性化权限，使用默认权限
-    const defaultPerms = getDefaultPermissions(user.value.role)
-    return defaultPerms.includes(permission)
+    return false
   }
 
   return {
-    token,
     user,
     isLoggedIn,
     isAdmin,
     login,
     logout,
-    getDefaultPermissions,
     hasPermission
   }
 })
