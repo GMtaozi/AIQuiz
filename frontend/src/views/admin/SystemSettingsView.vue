@@ -586,6 +586,11 @@
                 <span class="form-tip">启用后将记录所有用户的操作日志</span>
               </el-form-item>
 
+              <el-form-item label="审核日志导出">
+                <el-button @click="handleExportAuditLogs" :loading="exportingAuditLogs">导出 CSV</el-button>
+                <span class="form-tip">导出全部题目审核日志（含审核人/动作/IP），供合规存档</span>
+              </el-form-item>
+
               <el-form-item>
                 <el-button type="primary" @click="saveSecuritySettings">保存设置</el-button>
               </el-form-item>
@@ -889,6 +894,33 @@ const {
   deleteResetRequest,
   formatDateTime
 } = useSystemSettings()
+
+// ============ 审计日志导出（CSV，后端流式生成） ============
+import { api } from '@/api'
+
+const exportingAuditLogs = ref(false)
+
+const handleExportAuditLogs = async () => {
+  exportingAuditLogs.value = true
+  try {
+    const res = await api.get('/system/audit-logs/export', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    const disposition = res.headers?.['content-disposition'] || ''
+    const match = disposition.match(/filename=(\S+\.csv)/)
+    a.href = url
+    a.download = match ? match[1] : `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('审核日志已导出')
+  } catch (e) {
+    ElMessage.error(e.message || '导出失败')
+  } finally {
+    exportingAuditLogs.value = false
+  }
+}
 
 // Initialize
 onMounted(async () => {

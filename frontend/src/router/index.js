@@ -26,6 +26,36 @@ const routes = [
     meta: { title: '无权限' }
   },
   {
+    // 学生区：不依赖菜单权限（后端按考生名单归属校验）
+    path: '/student',
+    component: () => import('@/views/student/StudentLayout.vue'),
+    meta: { requiresAuth: true, studentArea: true },
+    children: [
+      {
+        path: '',
+        redirect: '/student/exams'
+      },
+      {
+        path: 'exams',
+        name: 'StudentExams',
+        component: () => import('@/views/student/StudentExamListView.vue'),
+        meta: { title: '考试中心' }
+      },
+      {
+        path: 'exams/:id',
+        name: 'StudentExamTaking',
+        component: () => import('@/views/student/StudentExamTakingView.vue'),
+        meta: { title: '在线作答' }
+      },
+      {
+        path: 'scores',
+        name: 'StudentScores',
+        component: () => import('@/views/student/StudentScoresView.vue'),
+        meta: { title: '我的成绩' }
+      }
+    ]
+  },
+  {
     path: '/',
     component: () => import('@/views/admin/AdminLayout.vue'),
     meta: { requiresAuth: true },
@@ -133,6 +163,13 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth) {
     if (!authStore.isLoggedIn) {
       next({ name: 'Login' })
+      return
+    }
+
+    // 学生区跳过菜单权限校验（role=3 默认无管理端权限；
+    // 考试可见性由后端按考生名单/时间窗校验）
+    if (to.meta.studentArea) {
+      next()
       return
     }
 

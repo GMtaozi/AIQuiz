@@ -355,7 +355,8 @@ const handleLogin = async () => {
     const result = await authStore.login(loginForm.username, loginForm.password)
     if (result.success) {
       ElMessage.success('登录成功')
-      router.push('/dashboard')
+      // 角色分流：学生进考试中心，管理/教师进控制台
+      router.push(authStore.user?.role === 3 ? '/student/exams' : '/dashboard')
     } else {
       ElMessage.error(result.message || '登录失败')
     }

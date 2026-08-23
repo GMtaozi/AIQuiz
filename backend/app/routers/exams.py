@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.question import ExamPaper, ExamRecord, Question, QuestionOption, UserAnswer
+from app.models.question import (
+    ExamPaper,
+    ExamPaperQuestion,
+    ExamRecord,
+    Question,
+    QuestionOption,
+    UserAnswer,
+)
 from app.models.user import User
 from app.schemas.exam import (
     ExamCreate,
@@ -187,6 +194,63 @@ def get_exam(exam_id: int, db: Session = Depends(get_db), current_user: User = D
         created_at=exam.created_at,
         updated_at=exam.updated_at,
     )
+
+
+@router.get("/{exam_id}/questions")
+def get_exam_questions_for_student(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """学生获取试卷题目（作答视图）。
+
+    商业化补齐：学生端在线作答的前提接口。
+    安全：考生名单/时间窗校验；答案(answer/explanation)与正确项标记(is_correct)
+    一律不下发，判分仅发生在服务端。
+    """
+    exam_paper = db.query(ExamPaper).filter(ExamPaper.id == exam_id).first()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考试不存在")
+
+    config = exam_paper.config or {}
+    student_ids = config.get("student_ids")
+    if student_ids and current_user.id not in student_ids:
+        raise HTTPException(status_code=403, detail="您不在本场考试的考生名单中")
+    now_iso = datetime.utcnow().isoformat()
+    if config.get("start_time") and now_iso < str(config["start_time"]):
+        raise HTTPException(status_code=403, detail="考试尚未开始")
+
+    from app.models.question import QuestionOption
+
+    rows = (
+        db.query(ExamPaperQuestion, Question)
+        .join(Question, ExamPaperQuestion.question_id == Question.id)
+        .filter(ExamPaperQuestion.exam_paper_id == exam_id)
+        .order_by(ExamPaperQuestion.order)
+        .all()
+    )
+
+    result = []
+    for pq, q in rows:
+        options = (
+            db.query(QuestionOption)
+            .filter(QuestionOption.question_id == q.id)
+            .order_by(QuestionOption.order)
+            .all()
+        )
+        result.append(
+            {
+                "question_id": q.id,
+                "order": pq.order,
+                "score": pq.score,
+                "question_type": q.question_type,
+                "content": q.content,
+                "difficulty": q.difficulty,
+                # 仅标签与内容；is_correct 不下发
+                "options": [{"option_label": o.option_label, "option_content": o.option_content} for o in options],
+            }
+        )
+    return result
 
 
 def _check_exam_ownership(exam: ExamPaper, current_user: User) -> None:

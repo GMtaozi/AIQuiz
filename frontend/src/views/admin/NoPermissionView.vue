@@ -6,7 +6,14 @@
       </div>
       <h1 class="title">暂无访问权限</h1>
       <p class="message">请联系管理员分配权限后再试</p>
-      <el-button type="primary" @click="handleLogout">退出登录</el-button>
+      <div class="actions">
+        <el-button v-if="authStore.user?.role === 3" type="primary" @click="router.push('/student/exams')">
+          进入考试中心
+        </el-button>
+        <el-button :type="authStore.user?.role === 3 ? 'default' : 'primary'" @click="handleLogout">
+          退出登录
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -69,6 +76,12 @@ const handleLogout = () => {
   color: #909399;
   margin: 0 0 32px;
   line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 
 .el-button {
