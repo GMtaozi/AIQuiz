@@ -118,7 +118,9 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
     """评估 P1-4：登录成功后设置 httpOnly cookie（前端 JS 无法读取，防 XSS 窃取 token）。
 
     后端 get_current_user 优先读取该 cookie，其次兼容 Authorization 头（渐进迁移期）。
-    生产环境部署在 HTTPS 时应将 secure 改为 True。
+    P0 修复：secure 不再硬编码 False，改为按环境动态取值（Settings.cookie_secure_flag）——
+    生产/非调试环境（DEBUG=false）为 True，cookie 仅通过 HTTPS 传输；
+    本地调试与自动化测试为 False。可用环境变量 COOKIE_SECURE 显式覆盖。
     """
     max_age = settings.jwt_access_token_expire_minutes * 60
     response.set_cookie(
@@ -128,7 +130,7 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
         httponly=True,
         samesite="lax",
         path="/",
-        secure=False,
+        secure=settings.cookie_secure_flag,
     )
     return response
 

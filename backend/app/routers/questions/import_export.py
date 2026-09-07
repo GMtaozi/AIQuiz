@@ -1248,47 +1248,54 @@ async def import_questions(
         errors = []
 
         for idx, qdata in enumerate(unique_questions):
+            # 评估 P0：每道题用 SAVEPOINT（begin_nested）独立包裹。
+            # 单题失败时仅回滚该题对应的 SAVEPOINT，已成功题目保留（部分成功语义），
+            # 失败原因记录进 errors；外层事务在循环结束后统一 commit。
             try:
-                existing = (
-                    db.query(Question)
-                    .filter(
-                        Question.content == qdata["content"],
-                        Question.question_type == qdata.get("question_type", "single_choice"),
-                    )
-                    .first()
-                )
-                if existing:
-                    continue
-
-                question = Question(
-                    chapter_id=qdata.get("chapter_id") or chapter_id_int or 1,
-                    subject_id=qdata.get("subject_id") or subject_id_int or 1,
-                    question_type=qdata.get("question_type", "single_choice"),
-                    content=qdata["content"],
-                    answer=qdata.get("answer", ""),
-                    explanation=qdata.get("explanation"),
-                    difficulty=qdata.get("difficulty", 1),
-                    score=qdata.get("score", 5.0),
-                    is_public=False,
-                    tags=qdata.get("tags"),
-                    status=1,
-                    source="import",
-                    audit_status="pending",
-                    created_by=current_user.id,
-                )
-                db.add(question)
-                db.flush()
-
-                if qdata.get("options"):
-                    for opt in qdata["options"]:
-                        option = QuestionOption(
-                            question_id=question.id,
-                            option_label=opt["option_label"],
-                            option_content=opt["option_content"],
-                            is_correct=opt.get("is_correct", False),
-                            order=ord(opt["option_label"]) - ord("A"),
+                with db.begin_nested():
+                    existing = (
+                        db.query(Question)
+                        .filter(
+                            Question.content == qdata["content"],
+                            Question.question_type == qdata.get("question_type", "single_choice"),
                         )
-                        db.add(option)
+                        .first()
+                    )
+                    if existing:
+                        # 重复题目：不算失败，直接跳过（SAVEPOINT 正常释放）
+                        continue
+
+                    question = Question(
+                        chapter_id=qdata.get("chapter_id") or chapter_id_int or 1,
+                        subject_id=qdata.get("subject_id") or subject_id_int or 1,
+                        question_type=qdata.get("question_type", "single_choice"),
+                        content=qdata["content"],
+                        answer=qdata.get("answer", ""),
+                        explanation=qdata.get("explanation"),
+                        difficulty=qdata.get("difficulty", 1),
+                        score=qdata.get("score", 5.0),
+                        is_public=False,
+                        tags=qdata.get("tags"),
+                        status=1,
+                        source="import",
+                        audit_status="pending",
+                        created_by=current_user.id,
+                    )
+                    db.add(question)
+                    db.flush()
+
+                    if qdata.get("options"):
+                        for opt in qdata["options"]:
+                            option = QuestionOption(
+                                question_id=question.id,
+                                option_label=opt["option_label"],
+                                option_content=opt["option_content"],
+                                is_correct=opt.get("is_correct", False),
+                                order=ord(opt["option_label"]) - ord("A"),
+                            )
+                            db.add(option)
+
+                        db.flush()
 
                 success_count += 1
             except Exception as e:
