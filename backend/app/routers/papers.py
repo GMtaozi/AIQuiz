@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models import User
 from app.models.question import Chapter, ExamPaper, ExamPaperQuestion, ExamType, Question, Subject
-from app.routers.papers_generate import router as papers_generate_router
+from app.routers.papers_generate import (
+    DOCX_AVAILABLE,
+    PDF_AVAILABLE,
+    _generate_pdf_paper,
+    _generate_word_paper,
+)
+from app.routers.papers_generate import (
+    router as papers_generate_router,
+)
 from app.schemas.paper import (
     ExportPaperRequest,
     FixedQuestionItem,
