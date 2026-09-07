@@ -65,3 +65,7 @@ deploy/backups/
 # 商业授权文件（客户资产，绝不入库）
 backend/license.key
 *.license.key
+
+# 工具与协作脚手架（本地产物，不入库）
+.workbuddy/
+workspace/
