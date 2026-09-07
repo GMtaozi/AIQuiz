@@ -247,7 +247,7 @@ class TestImportRegressionGuards:
 
     def test_safe_cell_value_neutralizes_formula_injection(self):
         """回归：导出防公式注入未被破坏（= + - @ 开头强制转文本）。"""
-        from app.routers.questions.import_export import _safe_cell_value
+        from app.routers.questions.utils import _safe_cell_value
 
         assert _safe_cell_value("=1+1") == "'=1+1"
         assert _safe_cell_value("+1+1") == "'+1+1"
