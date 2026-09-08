@@ -277,6 +277,8 @@ class UserAnswer(Base):
     is_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     teacher_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    graded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -286,6 +288,7 @@ class UserAnswer(Base):
     )
 
     exam_record: Mapped["ExamRecord"] = relationship(back_populates="user_answers")
+    grader: Mapped["User | None"] = relationship("User", foreign_keys=[graded_by])
 
 
 class AIPromptTemplate(Base):

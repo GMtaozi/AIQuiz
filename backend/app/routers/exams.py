@@ -1,8 +1,10 @@
 from datetime import datetime
 import enum
+import math
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -16,12 +18,18 @@ from app.models.question import (
 )
 from app.models.user import User
 from app.schemas.exam import (
+    ExamAnalysisKnowledgePoint,
+    ExamAnalysisQuestionStat,
+    ExamAnalysisResponse,
+    ExamAnalysisScoreDistribution,
     ExamCreate,
     ExamGradeRequest,
     ExamGradeResponse,
+    ExamGradeSubjectiveResponse,
     ExamRecordResponse,
     ExamResponse,
     ExamUpdate,
+    SubjectiveGradeRequest,
     UserAnswerCreate,
     UserAnswerResponse,
 )
@@ -610,4 +618,341 @@ def grade_exam(
 
     return ExamGradeResponse(
         exam_record_id=grade_request.exam_record_id, total_score=total_score, graded_count=graded_count, results=results
+    )
+
+
+# ============ Exam Analysis Endpoint ============
+
+
+@router.get("/{exam_id}/analysis", response_model=ExamAnalysisResponse)
+def get_exam_analysis(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    """获取单次考试的详细分析报告。
+
+    包含：考试基本信息、分数统计、题目分析（正确率/区分度）、知识点掌握度、分数段分布。
+    """
+    # 1. 验证考试存在
+    exam_paper = db.query(ExamPaper).filter(ExamPaper.id == exam_id).first()
+    if not exam_paper:
+        raise HTTPException(status_code=404, detail="考试场次不存在")
+
+    # 2. 获取该考试的所有已提交/已批改记录
+    records = (
+        db.query(ExamRecord)
+        .filter(ExamRecord.exam_paper_id == exam_id, ExamRecord.status.in_(["submitted", "graded"]))
+        .all()
+    )
+
+    # 3. 基础统计
+    total_students = db.query(ExamRecord).filter(ExamRecord.exam_paper_id == exam_id).count()
+    submitted_count = len(records)
+    graded_records = [r for r in records if r.status == "graded"]
+    graded_count = len(graded_records)
+
+    # 4. 分数统计
+    scored_records = [r for r in graded_records if r.score is not None]
+    scores = [r.score for r in scored_records]
+
+    average_score = 0.0
+    max_score = 0.0
+    min_score = 0.0
+    standard_deviation = 0.0
+    pass_rate = 0.0
+
+    if scores:
+        average_score = sum(scores) / len(scores)
+        max_score = max(scores)
+        min_score = min(scores)
+        if len(scores) > 1:
+            variance = sum((s - average_score) ** 2 for s in scores) / len(scores)
+            standard_deviation = math.sqrt(variance)
+        pass_count = sum(1 for s in scores if s >= exam_paper.passing_score)
+        pass_rate = (pass_count / len(scores)) * 100
+
+    # 5. 题目分析
+    paper_questions = (
+        db.query(ExamPaperQuestion).filter(ExamPaperQuestion.exam_paper_id == exam_id).all()
+    )
+    question_stats: List[ExamAnalysisQuestionStat] = []
+
+    for pq in paper_questions:
+        question = db.query(Question).filter(Question.id == pq.question_id).first()
+        if not question:
+            continue
+
+        # 获取该题的所有作答
+        answers = (
+            db.query(UserAnswer)
+            .join(ExamRecord, UserAnswer.exam_record_id == ExamRecord.id)
+            .filter(
+                ExamRecord.exam_paper_id == exam_id,
+                UserAnswer.question_id == pq.question_id,
+                ExamRecord.status.in_(["submitted", "graded"]),
+            )
+            .all()
+        )
+
+        total_attempts = len(answers)
+        correct_count = sum(1 for a in answers if a.is_correct)
+        answer_scores = [a.score for a in answers if a.score is not None]
+
+        correct_rate = (correct_count / total_attempts * 100) if total_attempts > 0 else 0.0
+        avg_score = sum(answer_scores) / len(answer_scores) if answer_scores else 0.0
+
+        # 区分度计算（高低分组法：取前27%和后27%）
+        discrimination = 0.0
+        if len(answer_scores) >= 4:
+            sorted_scores = sorted(answer_scores)
+            n = len(sorted_scores)
+            group_size = max(1, int(n * 0.27))
+            high_group = sorted_scores[n - group_size:]
+            low_group = sorted_scores[:group_size]
+            high_avg = sum(high_group) / len(high_group)
+            low_avg = sum(low_group) / len(low_group)
+            if pq.score > 0:
+                discrimination = (high_avg - low_avg) / pq.score
+
+        question_stats.append(
+            ExamAnalysisQuestionStat(
+                question_id=question.id,
+                order=pq.order,
+                question_type=question.question_type,
+                content=question.content[:100],
+                difficulty=question.difficulty,
+                full_score=pq.score,
+                correct_count=correct_count,
+                total_attempts=total_attempts,
+                correct_rate=round(correct_rate, 2),
+                average_score=round(avg_score, 2),
+                discrimination=round(discrimination, 4),
+            )
+        )
+
+    # 6. 知识点分析
+    knowledge_point_stats: List[ExamAnalysisKnowledgePoint] = []
+    kp_data: dict[str, dict] = {}
+
+    for pq in paper_questions:
+        question = db.query(Question).filter(Question.id == pq.question_id).first()
+        if not question or not question.meta:
+            continue
+
+        kp_ids = question.meta.get("knowledge_point_ids", [])
+        for kp_id in kp_ids:
+            kp_id_str = str(kp_id)
+            if kp_id_str not in kp_data:
+                kp_data[kp_id_str] = {
+                    "id": kp_id_str,
+                    "question_ids": set(),
+                    "total_score": 0.0,
+                    "total_earned": 0.0,
+                }
+            kp_data[kp_id_str]["question_ids"].add(question.id)
+            kp_data[kp_id_str]["total_score"] += pq.score
+
+            # 计算该题总得分
+            answers = (
+                db.query(UserAnswer)
+                .join(ExamRecord, UserAnswer.exam_record_id == ExamRecord.id)
+                .filter(
+                    ExamRecord.exam_paper_id == exam_id,
+                    UserAnswer.question_id == question.id,
+                    ExamRecord.status.in_(["submitted", "graded"]),
+                )
+                .all()
+            )
+            for a in answers:
+                if a.score is not None:
+                    kp_data[kp_id_str]["total_earned"] += a.score
+
+    for kp_id_str, data in kp_data.items():
+        q_count = len(data["question_ids"])
+        avg_rate = (data["total_earned"] / data["total_score"] / submitted_count * 100) if data["total_score"] > 0 and submitted_count > 0 else 0.0
+
+        # 掌握度分级
+        if avg_rate >= 80:
+            mastery = "excellent"
+        elif avg_rate >= 60:
+            mastery = "good"
+        elif avg_rate >= 40:
+            mastery = "average"
+        else:
+            mastery = "weak"
+
+        knowledge_point_stats.append(
+            ExamAnalysisKnowledgePoint(
+                knowledge_point_id=kp_id_str,
+                knowledge_point_name=kp_id_str,  # 实际项目中应查询知识点名称
+                question_count=q_count,
+                total_score=data["total_score"],
+                average_score_rate=round(avg_rate, 2),
+                mastery_level=mastery,
+            )
+        )
+
+    # 7. 分数段分布
+    distribution = ExamAnalysisScoreDistribution()
+    for s in scores:
+        percentage = (s / exam_paper.total_score * 100) if exam_paper.total_score > 0 else 0
+        if percentage >= 90:
+            distribution.range_90_100 += 1
+        elif percentage >= 80:
+            distribution.range_80_89 += 1
+        elif percentage >= 70:
+            distribution.range_70_79 += 1
+        elif percentage >= 60:
+            distribution.range_60_69 += 1
+        else:
+            distribution.range_0_59 += 1
+
+    return ExamAnalysisResponse(
+        exam_id=exam_id,
+        exam_title=exam_paper.title,
+        total_students=total_students,
+        submitted_count=submitted_count,
+        graded_count=graded_count,
+        average_score=round(average_score, 2),
+        max_score=max_score,
+        min_score=min_score,
+        standard_deviation=round(standard_deviation, 2),
+        pass_rate=round(pass_rate, 2),
+        total_full_score=exam_paper.total_score,
+        question_stats=question_stats,
+        knowledge_point_stats=knowledge_point_stats,
+        score_distribution=distribution,
+    )
+
+
+# ============ Subjective Grading Endpoint ============
+
+
+@router.post("/{exam_id}/grade-subjective", response_model=ExamGradeSubjectiveResponse)
+def grade_subjective_answer(
+    exam_id: int,
+    grade_data: SubjectiveGradeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    """人工批改主观题。
+
+    教师对指定 exam_record + question_id 的主观题进行打分。
+    更新 UserAnswer.score/feedback/graded_by/graded_at，重新计算 record 总分。
+    如果所有主观题都已批改，自动将 record.status 更新为 "graded"。
+    """
+    # 1. 验证 exam_record 存在且属于该考试
+    record = db.query(ExamRecord).filter(ExamRecord.id == grade_data.exam_record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="考试记录不存在")
+    if record.exam_paper_id != exam_id:
+        raise HTTPException(status_code=400, detail="考试记录与考试场次不匹配")
+
+    # 2. 验证题目存在且属于该试卷
+    paper_question = (
+        db.query(ExamPaperQuestion)
+        .filter(
+            ExamPaperQuestion.exam_paper_id == exam_id,
+            ExamPaperQuestion.question_id == grade_data.question_id,
+        )
+        .first()
+    )
+    if not paper_question:
+        raise HTTPException(status_code=404, detail="题目不属于该试卷")
+
+    # 3. 验证题目是主观题
+    question = db.query(Question).filter(Question.id == grade_data.question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    if question.question_type in AUTO_GRADABLE_TYPES:
+        raise HTTPException(status_code=400, detail="该题为客观题，请使用自动判分接口")
+
+    # 4. 验证分数不超过卷面分
+    if grade_data.score > paper_question.score:
+        raise HTTPException(
+            status_code=400,
+            detail=f"得分不能超过该题卷面分 ({paper_question.score})",
+        )
+
+    # 5. 查找或创建 UserAnswer
+    user_answer = (
+        db.query(UserAnswer)
+        .filter(
+            UserAnswer.exam_record_id == grade_data.exam_record_id,
+            UserAnswer.question_id == grade_data.question_id,
+        )
+        .first()
+    )
+    if not user_answer:
+        raise HTTPException(status_code=404, detail="未找到该题作答记录")
+
+    # 6. 更新评分
+    user_answer.score = grade_data.score
+    user_answer.teacher_feedback = grade_data.feedback
+    user_answer.is_correct = None  # 主观题无对错概念
+    now = datetime.utcnow()
+    user_answer.graded_by = current_user.id
+    user_answer.graded_at = now
+
+    # 7. 重新计算 record 总分
+    all_answers = db.query(UserAnswer).filter(UserAnswer.exam_record_id == record.id).all()
+    total_score = sum(a.score for a in all_answers if a.score is not None)
+    record.score = total_score
+
+    # 8. 检查是否所有主观题都已批改
+    # 获取试卷中所有主观题
+    subjective_questions = (
+        db.query(ExamPaperQuestion, Question)
+        .join(Question, ExamPaperQuestion.question_id == Question.id)
+        .filter(
+            ExamPaperQuestion.exam_paper_id == exam_id,
+            Question.question_type.notin_(AUTO_GRADABLE_TYPES),
+        )
+        .all()
+    )
+
+    # 检查每道主观题是否都有评分
+    all_subjective_graded = True
+    for sq_pq, sq in subjective_questions:
+        sq_answer = next((a for a in all_answers if a.question_id == sq.id), None)
+        if sq_answer is None or sq_answer.score is None:
+            all_subjective_graded = False
+            break
+
+    # 如果所有主观题都已批改，更新状态
+    if all_subjective_graded and record.status != "graded":
+        record.status = "graded"
+
+    # 9. 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.GRADE,
+        resource_type=ResourceType.EXAM,
+        resource_id=exam_id,
+        description=f"批改主观题: record_id={record.id}, question_id={question.id}, score={grade_data.score}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details={
+            "exam_record_id": record.id,
+            "question_id": question.id,
+            "score": grade_data.score,
+        },
+    )
+
+    db.commit()
+    db.refresh(record)
+
+    return ExamGradeSubjectiveResponse(
+        exam_record_id=record.id,
+        question_id=grade_data.question_id,
+        score=grade_data.score,
+        feedback=grade_data.feedback,
+        graded_by=current_user.id,
+        graded_at=now,
+        record_total_score=total_score,
+        record_status=record.status,
+        all_subjective_graded=all_subjective_graded,
     )
