@@ -14,7 +14,10 @@ from app.schemas.knowledge import (
     KnowledgePointCreate,
     KnowledgePointResponse,
     KnowledgePointUpdate,
+    TextbookKnowledgeRequest,
+    TextbookKnowledgeResponse,
 )
+from app.services.ai_knowledge_extractor import generate_knowledge_from_textbook
 from app.utils.security import require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
@@ -195,3 +198,24 @@ def delete_knowledge_point(
         db.rollback()
         logger.error(f"删除知识点失败: id={knowledge_id}, error={e!s}")
         raise HTTPException(status_code=500, detail="删除失败，请稍后重试")
+
+
+@router.post("/generate-from-textbook", response_model=TextbookKnowledgeResponse)
+async def generate_from_textbook(
+    request: TextbookKnowledgeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
+):
+    """基于教材信息生成知识点框架（无文档冷启动）
+
+    用户只需输入教材元信息（年级、学科、版本），AI 自动生成完整的知识点树。
+    生成后自动调用 RIA++ 三重验证框架进行质量校验。
+    """
+    result = await generate_knowledge_from_textbook(
+        grade=request.grade,
+        subject=request.subject,
+        version=request.version,
+        chapter=request.chapter,
+        max_points=request.max_points,
+    )
+    return TextbookKnowledgeResponse(**result)

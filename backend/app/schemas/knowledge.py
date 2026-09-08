@@ -108,3 +108,24 @@ class KnowledgeStatistics(BaseModel):
     by_category: dict
     by_exam_type: dict
     max_depth: int
+
+
+class TextbookKnowledgeRequest(BaseModel):
+    """基于教材信息生成知识点框架的请求"""
+
+    grade: str = Field(..., min_length=1, max_length=50, description="年级，如初中七年级、高中一年级")
+    subject: str = Field(..., min_length=1, max_length=50, description="学科，如历史、数学、语文")
+    version: str = Field(default="人教版", max_length=50, description="教材版本")
+    chapter: str | None = Field(default=None, max_length=100, description="可选：具体章节")
+    max_points: int = Field(default=80, ge=1, le=200, description="最大知识点数量")
+
+
+class TextbookKnowledgeResponse(BaseModel):
+    """基于教材信息生成知识点框架的响应"""
+
+    success: bool
+    knowledge_points: list
+    total: int
+    quality_warnings: list[str] = []
+    ria_enabled: bool = True
+    validation_enabled: bool = True

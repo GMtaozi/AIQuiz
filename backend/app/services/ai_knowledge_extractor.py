@@ -1429,6 +1429,179 @@ class AIKnowledgeExtractor:
 
 
 # ------------------------------------------------------------------
+# 新增：基于教材信息生成知识点框架
+# ------------------------------------------------------------------
+
+async def generate_knowledge_from_textbook(
+    grade: str,
+    subject: str,
+    version: str = "人教版",
+    chapter: str | None = None,
+    max_points: int = 80,
+) -> Dict[str, Any]:
+    """基于教材信息生成知识点框架（无文档冷启动）
+
+    用户只需输入教材元信息（年级、学科、版本），AI 自动生成完整的知识点树。
+    生成后自动调用 RIA++ 三重验证框架进行质量校验。
+
+    Args:
+        grade: 年级，如"初中七年级"、"高中一年级"
+        subject: 学科，如"历史"、"数学"、"语文"
+        version: 教材版本，默认为"人教版"
+        chapter: 可选，具体章节名称
+        max_points: 最大知识点数量，默认80
+
+    Returns:
+        提取结果字典，包含：
+        - success: 是否成功
+        - knowledge_points: 知识点树
+        - total: 叶子节点数量
+        - quality_warnings: 质量警告列表
+        - ria_enabled: 是否启用 RIA++ 框架
+        - validation_enabled: 是否启用质量验证
+    """
+    extractor = AIKnowledgeExtractor()
+
+    # 构建 prompt
+    prompt = _build_textbook_prompt(grade, subject, version, chapter, max_points)
+
+    try:
+        # 调用 AI
+        response = await extractor._call_ai(prompt, max_tokens=8192)
+        if not response:
+            raise Exception("AI 未返回有效内容")
+
+        # 解析知识点树
+        knowledge_tree = extractor._parse_knowledge_tree(response)
+
+        # 初始化质量警告列表
+        all_quality_warnings: List[str] = []
+        validation_results: Dict[str, Any] = {}
+
+        # 三重质量验证
+        knowledge_tree, quality_warnings = extractor._validate_knowledge_quality(knowledge_tree)
+        all_quality_warnings.extend(quality_warnings)
+        validation_results["triple_validation"] = {
+            "warnings_count": len(quality_warnings),
+            "status": "completed",
+        }
+
+        # 层级验证
+        knowledge_tree, hierarchy_warnings = extractor._validate_hierarchy(knowledge_tree)
+        all_quality_warnings.extend(hierarchy_warnings)
+        validation_results["hierarchy_validation"] = {
+            "warnings_count": len(hierarchy_warnings),
+            "status": "completed",
+        }
+
+        # 去重合并
+        knowledge_tree, dedup_logs = extractor._deduplicate_knowledge(knowledge_tree)
+        all_quality_warnings.extend(dedup_logs)
+        validation_results["deduplication"] = {
+            "operations_count": len(dedup_logs),
+            "status": "completed",
+        }
+
+        # 强制限制知识点数量和层级深度
+        knowledge_tree = extractor._enforce_limits(knowledge_tree, max_points=max_points, max_depth=4)
+
+        return {
+            "success": True,
+            "knowledge_points": knowledge_tree,
+            "total": extractor._count_leaf_nodes(knowledge_tree),
+            "quality_warnings": all_quality_warnings,
+            "validation_results": validation_results,
+            "ria_enabled": True,
+            "validation_enabled": True,
+        }
+
+    except Exception as e:
+        logger.error(f"教材知识点生成失败: {e!s}")
+        # 降级：返回原始提取结果（不带验证）
+        try:
+            knowledge_tree = extractor._parse_knowledge_tree(
+                '{"knowledge_points": [{"name": "提取失败", "description": str(e), "children": []}]}'
+            )
+        except Exception:
+            knowledge_tree = []
+
+        return {
+            "success": False,
+            "error": str(e),
+            "knowledge_points": knowledge_tree,
+            "quality_warnings": [f"验证过程异常: {e!s}"],
+            "validation_results": {"status": "failed"},
+            "ria_enabled": True,
+            "validation_enabled": True,
+        }
+
+
+def _build_textbook_prompt(
+    grade: str,
+    subject: str,
+    version: str,
+    chapter: str | None,
+    max_points: int,
+) -> str:
+    """构建基于教材信息生成知识点的 prompt
+
+    Args:
+        grade: 年级
+        subject: 学科
+        version: 教材版本
+        chapter: 具体章节（可选）
+        max_points: 最大知识点数量
+
+    Returns:
+        构建好的 prompt 字符串
+    """
+    chapter_text = chapter if chapter else "全册"
+
+    prompt = f"""你是一位资深的{grade}{subject}教师，精通{version}教材。
+请根据以下教材信息，生成完整的知识点树：
+
+- 年级：{grade}
+- 学科：{subject}
+- 版本：{version}
+- 章节：{chapter_text}
+
+要求：
+1. 基于国家义务教育课程标准（课标）生成
+2. 知识点覆盖教材所有单元/章节
+3. 每个知识点包含：name、description、excerpt、children
+4. description 用归纳语言描述该知识点的核心内容（不超过200字）
+5. excerpt 写出该知识点对应的关键原文/概念定义（不超过2000字）
+6. 层级最多4层
+7. 总知识点不超过{max_points}个
+8. 名称简洁明了，不要包含"第X单元"等编号，而是用概念名称
+9. 只返回纯JSON，不要包含markdown代码块标记
+10. 不要有尾随逗号
+
+严格按以下格式输出：
+{{
+  "knowledge_points": [
+    {{
+      "name": "核心主题（简洁归纳）",
+      "description": "该知识点的简短摘要，归纳性描述",
+      "excerpt": "该知识点对应的关键原文/概念定义",
+      "children": [
+        {{
+          "name": "子知识点1",
+          "description": "子知识点的简短摘要",
+          "excerpt": "子知识点对应的关键内容",
+          "children": []
+        }}
+      ]
+    }}
+  ]
+}}
+
+请直接返回JSON格式的知识点结构（不要包含markdown代码块标记）："""
+
+    return prompt
+
+
+# ------------------------------------------------------------------
 # 全局实例
 # ------------------------------------------------------------------
 _ai_extractor = AIKnowledgeExtractor()
