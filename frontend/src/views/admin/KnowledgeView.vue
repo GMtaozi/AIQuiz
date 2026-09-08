@@ -29,7 +29,6 @@
             size="small"
             clearable
             class="tree-search"
-            @input="handleTreeSearch"
           >
             <template #prefix>
               <el-icon><Search /></el-icon>
@@ -244,6 +243,7 @@
 
     <!-- 新建/编辑知识点弹窗 -->
     <el-dialog
+      v-if="dialogVisible"
       v-model="dialogVisible"
       :title="isEdit ? '编辑知识点' : '新建知识点'"
       width="500px"
@@ -304,7 +304,7 @@
     </el-dialog>
 
     <!-- 导入知识点弹窗 -->
-    <el-dialog v-model="importDialogVisible" title="导入知识点" width="600px" :close-on-click-modal="false">
+    <el-dialog v-if="importDialogVisible" v-model="importDialogVisible" title="导入知识点" width="600px" :close-on-click-modal="false">
       <!-- 导入模式选择 -->
       <div class="import-mode-tabs">
         <el-radio-group v-model="importMode">
@@ -459,6 +459,8 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useKnowledge } from '@/composables/useKnowledge'
+import { watch } from 'vue'
+import { useDebouncedRef } from '@/utils/debounce'
 
 const router = useRouter()
 
@@ -545,6 +547,12 @@ const {
   formatDate,
   truncateContent
 } = useKnowledge()
+
+// Debounced tree search — avoid filtering on every keystroke
+const debouncedTreeSearch = useDebouncedRef(treeSearchKeyword, 300)
+watch(debouncedTreeSearch, () => {
+  handleTreeSearch()
+})
 </script>
 
 

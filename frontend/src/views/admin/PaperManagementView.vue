@@ -140,11 +140,11 @@
     </div>
 
     <!-- 子组件 -->
-    <PaperDialog />
-    <PreviewDialog />
-    <AnalysisDialog />
-    <VersionHistory />
-    <SimilarityDialog />
+    <PaperDialog v-if="paperDialogVisible" />
+    <PreviewDialog v-if="previewDialogVisible" />
+    <AnalysisDialog v-if="analysisDialogVisible" />
+    <VersionHistory v-if="versionDialogVisible" />
+    <SimilarityDialog v-if="similarityDialogVisible" />
   </div>
 </template>
 
@@ -192,9 +192,7 @@ import SimilarityDialog from './components/SimilarityDialog.vue'
 const tableRef = ref(null)
 
 onMounted(() => {
-  fetchCategories()
-  fetchSubjects()
-  fetchPaperList()
+  Promise.all([fetchCategories(), fetchSubjects(), fetchPaperList()])
 })
 </script>
 

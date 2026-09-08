@@ -155,6 +155,7 @@
 
     <!-- 新建/编辑题目弹窗 -->
     <el-dialog
+      v-if="questionDialogVisible"
       v-model="questionDialogVisible"
       :title="isEdit ? '编辑题目' : '新建题目'"
       width="680px"
@@ -274,7 +275,7 @@
     </el-dialog>
 
     <!-- 题目预览弹窗 -->
-    <el-dialog v-model="previewDialogVisible" title="题目预览" width="600px">
+    <el-dialog v-if="previewDialogVisible" v-model="previewDialogVisible" title="题目预览" width="600px">
       <div class="question-preview" v-if="currentQuestion">
         <div class="preview-header">
           <el-tag>{{ getTypeName(currentQuestion.question_type) }}</el-tag>
@@ -317,7 +318,7 @@
     </el-dialog>
 
     <!-- 批量导入弹窗 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="700px">
+    <el-dialog v-if="importDialogVisible" v-model="importDialogVisible" title="批量导入题目" width="700px">
       <div class="import-target-settings">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -463,7 +464,7 @@
     </el-dialog>
 
     <!-- 导出设置弹窗 -->
-    <el-dialog v-model="exportDialogVisible" title="导出题目" width="500px">
+    <el-dialog v-if="exportDialogVisible" v-model="exportDialogVisible" title="导出题目" width="500px">
       <el-form :model="exportForm" label-width="100px">
         <el-form-item label="导出格式">
           <el-radio-group v-model="exportForm.format">
@@ -499,6 +500,7 @@
 
     <!-- 相似度检测弹窗 -->
     <el-dialog
+      v-if="similarityDialogVisible"
       v-model="similarityDialogVisible"
       title="题目相似度检测"
       width="1000px"
@@ -688,11 +690,9 @@ const {
   getSimilarityLevel
 } = useQuestionBank()
 
-// Initialize
+// Initialize — parallelize independent API calls
 onMounted(() => {
-  fetchCategories()
-  fetchExamTypes()
-  fetchQuestionList()
+  Promise.all([fetchCategories(), fetchExamTypes(), fetchQuestionList()])
 })
 </script>
 

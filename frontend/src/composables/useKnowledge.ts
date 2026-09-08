@@ -737,8 +737,8 @@ export function useKnowledge() {
   // 模块顶层 onMounted 不会绑定任何组件，导致知识点树首屏为空、右键菜单关闭失效。
   routerRef = useRouter()
   onMounted(() => {
-    fetchKnowledgeTree()
-    fetchExamTypesAndCourses()
+    // Parallelize independent tree/categories/examTypes fetching
+    Promise.all([fetchKnowledgeTree(), fetchExamTypesAndCourses()])
     document.addEventListener('click', hideContextMenu)
   })
 
