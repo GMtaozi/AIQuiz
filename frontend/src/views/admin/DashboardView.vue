@@ -98,7 +98,7 @@
               </div>
             </div>
           </div>
-          <el-empty v-else description="暂无待审核题目" :image-size="60" />
+          <BaseEmpty v-else description="暂无待审核题目" size="sm" />
         </el-card>
       </el-col>
 
@@ -123,7 +123,7 @@
               </div>
             </div>
           </div>
-          <el-empty v-else description="暂无活动记录" :image-size="60" />
+          <BaseEmpty v-else description="暂无活动记录" size="sm" />
         </el-card>
       </el-col>
     </el-row>
@@ -137,6 +137,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { dashboardAPI, auditAPI } from '@/api'
+import { BaseEmpty } from '@/components/common'
 
 const router = useRouter()
 const mounted = ref(false)
@@ -482,7 +483,7 @@ onUnmounted(() => {
 
 /* 页面标题 */
 .page-header {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
   opacity: 0;
   transform: translateY(20px);
 }
@@ -492,17 +493,17 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-family: 'Outfit', 'Segoe UI', sans-serif;
-  font-size: 26px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-3xl);
   font-weight: 600;
-  color: #1F2937;
-  margin: 0 0 4px 0;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-1) 0;
 }
 
 .page-subtitle {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
-  color: #9CA3AF;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -523,13 +524,18 @@ onUnmounted(() => {
 
 /* 统计卡片 */
 .stat-cards {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
+
+  /* 移动端：减小间距 */
+  @media (max-width: 767px) {
+    margin-bottom: var(--space-3);
+  }
 }
 
 .stat-card {
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   position: relative;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   cursor: default;
@@ -552,10 +558,10 @@ onUnmounted(() => {
 }
 
 .stat-card-content {
-  padding: 20px;
+  padding: var(--space-5);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   position: relative;
   z-index: 1;
 }
@@ -581,40 +587,40 @@ onUnmounted(() => {
 }
 
 .stat-value {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-family);
   font-size: 30px;
   font-weight: 700;
-  color: #1F2937;
+  color: var(--text-primary);
   line-height: 1.1;
   letter-spacing: -0.5px;
 }
 
 .stat-label {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  color: #6B7280;
-  margin-top: 4px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: var(--space-1);
 }
 
 /* 图表卡片 */
 .chart-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .chart-card {
-  border-radius: 16px;
-  border: 1px solid #F3F4F6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .chart-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-lg);
 }
 
 .chart-card :deep(.el-card__header) {
   padding: 16px 20px;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .chart-card-header {
@@ -636,16 +642,16 @@ onUnmounted(() => {
 }
 
 .chart-title {
-  font-family: 'Outfit', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: #1F2937;
+  color: var(--text-primary);
 }
 
 .chart-subtitle {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  color: #9CA3AF;
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 .chart-container {
@@ -659,11 +665,11 @@ onUnmounted(() => {
 
 /* 待审核列表 */
 .pending-list {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   max-height: 320px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #D1D5DB transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .pending-list::-webkit-scrollbar {
@@ -675,12 +681,12 @@ onUnmounted(() => {
 }
 
 .pending-list::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
+  background: var(--border-strong);
   border-radius: 3px;
 }
 
 .pending-list::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: var(--text-placeholder);
 }
 
 .pending-item {
@@ -688,7 +694,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #F3F4F6;
+  border-bottom: 1px solid var(--border-light);
   transition: background 0.2s ease;
 }
 
@@ -697,7 +703,7 @@ onUnmounted(() => {
 }
 
 .pending-item:hover {
-  background: #F9FAFB;
+  background: var(--surface-tertiary);
   margin: 0 -20px;
   padding: 12px 20px;
 }
@@ -715,9 +721,9 @@ onUnmounted(() => {
 }
 
 .pending-content {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
-  color: #374151;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-regular);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -725,7 +731,7 @@ onUnmounted(() => {
 
 .pending-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   flex-shrink: 0;
   margin-left: 12px;
 }
@@ -734,11 +740,11 @@ onUnmounted(() => {
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .action-btn.approve {
-  color: #10B981;
+  color: var(--color-success);
 }
 
 .action-btn.approve:hover {
@@ -746,7 +752,7 @@ onUnmounted(() => {
 }
 
 .action-btn.reject {
-  color: #EF4444;
+  color: var(--color-danger);
 }
 
 .action-btn.reject:hover {
@@ -760,7 +766,7 @@ onUnmounted(() => {
   max-height: 320px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #D1D5DB transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .activity-timeline::-webkit-scrollbar {
@@ -772,12 +778,12 @@ onUnmounted(() => {
 }
 
 .activity-timeline::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
+  background: var(--border-strong);
   border-radius: 3px;
 }
 
 .activity-timeline::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: var(--text-placeholder);
 }
 
 .activity-timeline::before {
@@ -787,7 +793,7 @@ onUnmounted(() => {
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: linear-gradient(to bottom, #165DFF 0%, #4080FF 100%);  /* 评估 P2-14：紫色 → 规范主色 */
+  background: linear-gradient(to bottom, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   border-radius: 1px;
 }
 
@@ -815,56 +821,56 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--marker-color, #3B82F6);
-  border: 3px solid white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: var(--marker-color, var(--color-primary));
+  border: 3px solid var(--surface-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .timeline-body {
   flex: 1;
   min-width: 0;
-  background: #F9FAFB;
-  border-radius: 10px;
+  background: var(--surface-tertiary);
+  border-radius: var(--radius-lg);
   padding: 12px 14px;
-  border: 1px solid #F3F4F6;
+  border: 1px solid var(--border-light);
 }
 
 .timeline-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .timeline-title {
-  font-family: 'Outfit', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
   font-weight: 600;
-  color: #1F2937;
+  color: var(--text-primary);
 }
 
 .timeline-time {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  color: #9CA3AF;
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 .timeline-desc {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  color: #6B7280;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
 /* 底部区域 */
 .bottom-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 /* 响应式 */
 @media (max-width: 768px) {
   .page-title {
-    font-size: 22px;
+    font-size: var(--font-size-2xl);
   }
 
   .stat-value {
@@ -872,7 +878,7 @@ onUnmounted(() => {
   }
 
   .stat-card-content {
-    padding: 16px;
+    padding: var(--space-4);
   }
 
   .stat-icon-wrap {
@@ -887,18 +893,18 @@ onUnmounted(() => {
   .pending-info {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .pending-actions {
     margin-left: 0;
-    margin-top: 8px;
+    margin-top: var(--space-2);
   }
 
   .timeline-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: var(--space-1);
   }
 }
 </style>

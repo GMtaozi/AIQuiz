@@ -1,31 +1,34 @@
-// AI考试系统设计系统变量
-// 主色调
+// ============================================================
+// AIQuiz 设计系统 - Design Tokens
+// 策略：CSS自定义属性为主，SCSS变量为辅（兼容Element Plus）
+// ============================================================
+
+// ---------- SCSS变量（保留，供Element Plus内部使用）----------
 $primary-color: #165DFF;
 $primary-hover: #4080FF;
 $primary-light: #4080FF;
 $primary-lighter: #95C3FF;
 $primary-dark: #0D47A1;
 
-// 功能色
 $success-color: #67C23A;
 $warning-color: #E6A23C;
 $danger-color: #F56C6C;
 $info-color: #909399;
 
-// 中性色
 $text-primary: #303133;
 $text-regular: #606266;
 $text-secondary: #909399;
 $text-placeholder: #C0C4CC;
+
 $border-base: #DCDFE6;
 $border-light: #E4E7ED;
 $border-default: #DCDFE6;
 $border-lighter: #EBEEF5;
 $border-extra-light: #F2F6FC;
+
 $bg-page: #F5F7FA;
 $bg-base: #FFFFFF;
 
-// 深色模式变量
 $dark-bg: #0D1117;
 $dark-bg-secondary: #161B22;
 $dark-bg-tertiary: #21262D;
@@ -33,11 +36,9 @@ $dark-text-primary: #E6E8EB;
 $dark-text-secondary: #8B949E;
 $dark-border: #30363D;
 
-// 字体
-$font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemF, sans-serif;
+$font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
 $font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
 
-// 字号
 $font-size-xs: 12px;
 $font-size-sm: 13px;
 $font-size-base: 14px;
@@ -46,7 +47,6 @@ $font-size-xl: 18px;
 $font-size-2xl: 20px;
 $font-size-3xl: 24px;
 
-// 间距
 $spacing-xs: 4px;
 $spacing-sm: 8px;
 $spacing-md: 12px;
@@ -56,7 +56,6 @@ $spacing-xl: 24px;
 $spacing-2xl: 32px;
 $spacing-3xl: 40px;
 
-// 圆角
 $radius-sm: 2px;
 $radius-base: 4px;
 $radius-md: 6px;
@@ -64,19 +63,147 @@ $radius-lg: 8px;
 $radius-xl: 12px;
 $radius-full: 9999px;
 
-// 阴影
 $shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 $shadow-base: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
 $shadow-md: 0 4px 8px 0 rgba(0, 0, 0, 0.1);
 $shadow-lg: 0 8px 16px 0 rgba(0, 0, 0, 0.15);
 $shadow-xl: 0 12px 24px 0 rgba(0, 0, 0, 0.2);
 
-// 过渡
 $transition-fast: 0.15s ease;
 $transition-base: 0.25s ease;
 $transition-slow: 0.35s ease;
 
-// 布局
 $header-height: 64px;
 $sidebar-width: 220px;
 $sidebar-collapsed-width: 64px;
+
+
+// ============================================================
+// CSS自定义属性（全局生效，支持深色模式一键切换）
+// ============================================================
+:root {
+  // ---------- 品牌色 ----------
+  --color-primary: #165DFF;
+  --color-primary-hover: #4080FF;
+  --color-primary-light: #4080FF;
+  --color-primary-lighter: #95C3FF;
+  --color-primary-dark: #0D47A1;
+  --color-primary-rgb: 22, 93, 255;
+
+  // ---------- 功能色 ----------
+  --color-success: #67C23A;
+  --color-warning: #E6A23C;
+  --color-danger: #F56C6C;
+  --color-info: #909399;
+
+  // ---------- 语义化表面色 ----------
+  --surface-primary: #FFFFFF;      // 卡片、弹窗
+  --surface-secondary: #F5F7FA;    // 页面背景
+  --surface-tertiary: #F2F6FC;     // 输入框背景、分割区域
+  --surface-elevated: #FFFFFF;     // 浮层、下拉菜单
+
+  // ---------- 语义化文字色 ----------
+  --text-primary: #1F2937;         // 标题、主要文字
+  --text-regular: #374151;         // 正文
+  --text-secondary: #6B7280;       // 辅助说明
+  --text-placeholder: #9CA3AF;     // 占位符
+  --text-disabled: #C0C4CC;        // 禁用状态
+
+  // ---------- 语义化边框色 ----------
+  --border-default: #E5E7EB;       // 默认边框
+  --border-light: #F3F4F6;         // 浅色边框
+  --border-strong: #D1D5DB;        // 强调边框
+
+  // ---------- 圆角（统一规范）----------
+  --radius-sm: 4px;                // 标签、小按钮
+  --radius-md: 6px;                // 输入框、表单元素
+  --radius-lg: 8px;                // 按钮、操作项
+  --radius-xl: 12px;               // 卡片、弹窗
+  --radius-2xl: 16px;              // 大弹窗、特殊面板
+  --radius-full: 9999px;           // 圆形、药丸
+
+  // ---------- 阴影（三级体系）----------
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  // ---------- 过渡 ----------
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  // ---------- 布局 ----------
+  --header-height: 64px;
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 64px;
+
+  // ---------- 字体 ----------
+  --font-family: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+
+  // ---------- 字号 ----------
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+
+  // ---------- 间距 ----------
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+}
+
+
+// ============================================================
+// 深色模式（仅覆盖变量，无需重复写组件样式）
+// ============================================================
+[data-theme="dark"] {
+  // 品牌色（提亮，保证对比度）
+  --color-primary: #4080FF;
+  --color-primary-hover: #60A5FA;
+  --color-primary-light: #60A5FA;
+  --color-primary-lighter: #95C3FF;
+  --color-primary-dark: #165DFF;
+  --color-primary-rgb: 64, 128, 255;
+
+  // 功能色（微调，避免刺眼）
+  --color-success: #86EFAC;
+  --color-warning: #FCD34D;
+  --color-danger: #FCA5A5;
+  --color-info: #9CA3AF;
+
+  // 表面色（GitHub Dark风格）
+  --surface-primary: #161B22;
+  --surface-secondary: #0D1117;
+  --surface-tertiary: #21262D;
+  --surface-elevated: #1E293B;
+
+  // 文字色
+  --text-primary: #F1F5F9;
+  --text-regular: #E2E8F0;
+  --text-secondary: #94A3B8;
+  --text-placeholder: #6B7280;
+  --text-disabled: #4B5563;
+
+  // 边框色
+  --border-default: #30363D;
+  --border-light: #21262D;
+  --border-strong: #4B5563;
+
+  // 阴影（深色模式用更深的阴影）
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+}

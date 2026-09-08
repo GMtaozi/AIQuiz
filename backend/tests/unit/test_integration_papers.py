@@ -229,15 +229,17 @@ class TestPaperUpdate:
     """PUT /api/papers/{paper_id} - Update paper."""
 
     def test_update_paper_as_teacher(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        paper = _create_paper(db, 1, status="draft")
+        teacher = _create_user(db, "paper_teacher_up", role=2)
+        token = _login(client, "paper_teacher_up")
+        paper = _create_paper(db, teacher.id, status="draft")
         payload = {"title": "Updated Paper Title"}
         resp = client.put(f"/api/papers/{paper.id}", json=payload, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
 
     def test_update_published_paper_forbidden(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        paper = _create_paper(db, 1, status="published")
+        teacher = _create_user(db, "paper_teacher_pub", role=2)
+        token = _login(client, "paper_teacher_pub")
+        paper = _create_paper(db, teacher.id, status="published")
         payload = {"title": "Updated Paper Title"}
         resp = client.put(f"/api/papers/{paper.id}", json=payload, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 400
@@ -260,8 +262,9 @@ class TestPaperDelete:
     """DELETE /api/papers/{paper_id} - Delete paper (soft delete)."""
 
     def test_delete_paper_as_teacher(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        paper = _create_paper(db, 1, status="draft")
+        teacher = _create_user(db, "paper_teacher_del", role=2)
+        token = _login(client, "paper_teacher_del")
+        paper = _create_paper(db, teacher.id, status="draft")
         resp = client.delete(f"/api/papers/{paper.id}", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 204
 
@@ -281,14 +284,16 @@ class TestPaperPublish:
     """POST /api/papers/{paper_id}/publish - Publish paper."""
 
     def test_publish_paper_as_teacher(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        paper = _create_paper(db, 1, status="draft")
+        teacher = _create_user(db, "paper_teacher_pub2", role=2)
+        token = _login(client, "paper_teacher_pub2")
+        paper = _create_paper(db, teacher.id, status="draft")
         resp = client.post(f"/api/papers/{paper.id}/publish", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
 
     def test_publish_already_published(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        paper = _create_paper(db, 1, status="published")
+        teacher = _create_user(db, "paper_teacher_pub3", role=2)
+        token = _login(client, "paper_teacher_pub3")
+        paper = _create_paper(db, teacher.id, status="published")
         resp = client.post(f"/api/papers/{paper.id}/publish", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 400
 

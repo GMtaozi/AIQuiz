@@ -206,83 +206,91 @@ onUnmounted(() => clearInterval(timer))
 .taking { max-width: 960px; margin: 0 auto; }
 
 .header-card {
-  background: #FFFFFF;
-  border: 1px solid #E5E6EB;
-  border-radius: 8px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
 
-  .exam-title { margin: 0 0 6px; font-size: 18px; font-weight: 600; color: #1D2129; }
-  .meta { margin: 0; font-size: 13px; color: #86909C; display: flex; gap: 16px; align-items: center; }
+  .exam-title { margin: 0 0 var(--space-1); font-size: var(--font-size-xl); font-weight: 600; color: var(--text-primary); }
+  .meta { margin: 0; font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; gap: var(--space-4); align-items: center; }
   .countdown {
     font-weight: 600;
-    color: #165DFF;
-    &.danger { color: #F53F3F; }
+    color: var(--color-primary);
+    &.danger { 
+      color: var(--color-danger); 
+      animation: countdownPulse 1s infinite;
+    }
   }
 }
 
 .body-grid {
   display: grid;
   grid-template-columns: 1fr 200px;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
 .question-card {
-  background: #FFFFFF;
-  border: 1px solid #E5E6EB;
-  border-radius: 8px;
-  padding: 20px;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
 
-  .q-label { font-size: 13px; color: #86909C; margin: 0 0 10px; }
-  .q-content { font-size: 15px; color: #1D2129; line-height: 1.7; white-space: pre-wrap; margin: 0 0 16px; }
+  .q-label { font-size: var(--font-size-sm); color: var(--text-secondary); margin: 0 0 var(--space-2); }
+  .q-content { font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.7; white-space: pre-wrap; margin: 0 0 var(--space-4); }
 
   .option-row {
     display: flex;
-    padding: 8px 12px;
-    border: 1px solid #F2F3F5;
-    border-radius: 6px;
-    margin-bottom: 8px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
 
-    &:hover { border-color: #165DFF; }
+    &:hover { border-color: var(--color-primary); }
   }
 }
 
 .nav-bar {
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 
   .submit-btn { margin-left: auto; }
 }
 
 .answer-sheet {
-  background: #FFFFFF;
-  border: 1px solid #E5E6EB;
-  border-radius: 8px;
-  padding: 16px;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
 
-  .sheet-title { font-size: 14px; font-weight: 600; color: #1D2129; margin: 0 0 12px; }
+  .sheet-title { font-size: var(--font-size-base); font-weight: 600; color: var(--text-primary); margin: 0 0 var(--space-3); }
 
-  .sheet-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .sheet-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-1); }
 
   .sheet-cell {
     height: 32px;
-    border: 1px solid #E5E6EB;
-    border-radius: 4px;
-    background: #FFFFFF;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-primary);
     cursor: pointer;
-    font-size: 13px;
-    color: #4E5969;
+    font-size: var(--font-size-sm);
+    color: var(--text-regular);
 
-    &.done { background: #E8F3FF; border-color: #165DFF; color: #165DFF; }
-    &.current { outline: 2px solid #165DFF; outline-offset: -1px; }
+    &.done { background: rgba(var(--color-primary-rgb), 0.1); border-color: var(--color-primary); color: var(--color-primary); }
+    &.current { outline: 2px solid var(--color-primary); outline-offset: -1px; }
   }
 
-  .sheet-summary { font-size: 12px; color: #86909C; margin: 12px 0 0; }
+  .sheet-summary { font-size: var(--font-size-xs); color: var(--text-secondary); margin: var(--space-3) 0 0; }
 }
 
 @media (max-width: 720px) {
   .body-grid { grid-template-columns: 1fr; }
+}
+
+@keyframes countdownPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 </style>

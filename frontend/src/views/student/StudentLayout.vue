@@ -39,12 +39,12 @@ const handleLogout = async () => {
 <style scoped lang="scss">
 .student-layout {
   min-height: 100vh;
-  background: #F5F7FA;
+  background: var(--surface-secondary);
 }
 
 .topbar {
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E6EB;
+  background: var(--surface-primary);
+  border-bottom: 1px solid var(--border-default);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -53,57 +53,57 @@ const handleLogout = async () => {
 .topbar-inner {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--space-6);
   height: 56px;
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: var(--space-8);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 
   .logo {
-    font-size: 17px;
+    font-size: var(--font-size-lg);
     font-weight: 600;
-    color: #165DFF;
+    color: var(--color-primary);
   }
 
   .divider {
     width: 1px;
     height: 16px;
-    background: #E5E6EB;
+    background: var(--border-default);
   }
 
   .subtitle {
-    font-size: 13px;
-    color: #4E5969;
+    font-size: var(--font-size-sm);
+    color: var(--text-regular);
   }
 }
 
 .nav {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1;
 
   .nav-item {
-    padding: 6px 16px;
-    border-radius: 6px;
-    font-size: 14px;
-    color: #4E5969;
+    padding: var(--space-1) var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    color: var(--text-regular);
     text-decoration: none;
-    transition: all 0.2s;
+    transition: all var(--transition-fast);
 
     &:hover {
-      background: #F2F3F5;
-      color: #165DFF;
+      background: var(--surface-tertiary);
+      color: var(--color-primary);
     }
 
     &.active {
-      background: #E8F3FF;
-      color: #165DFF;
+      background: rgba(var(--color-primary-rgb), 0.1);
+      color: var(--color-primary);
       font-weight: 500;
     }
   }
@@ -112,17 +112,17 @@ const handleLogout = async () => {
 .user-area {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 
   .username {
-    font-size: 14px;
-    color: #1D2129;
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
   }
 }
 
 .content {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 24px;
+  padding: var(--space-6);
 }
 </style>

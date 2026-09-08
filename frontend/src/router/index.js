@@ -142,7 +142,14 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  // 路由切换时滚动到顶部
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    }
+    return { top: 0, behavior: 'smooth' }
+  }
 })
 
 // 路由守卫

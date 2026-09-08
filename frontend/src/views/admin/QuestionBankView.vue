@@ -78,7 +78,7 @@
 
     <!-- 题目列表表格 -->
     <div class="table-container">
-      <el-empty v-if="!loading && questionList.length === 0" description="暂无题目数据" :image-size="80" />
+      <BaseEmpty v-if="!loading && questionList.length === 0" description="暂无题目数据" />
       <el-table
         v-else
         ref="tableRef"
@@ -583,6 +583,7 @@ import {
   UploadFilled
 } from '@element-plus/icons-vue'
 import { useQuestionBank } from '@/composables/useQuestionBank'
+import { BaseEmpty } from '@/components/common'
 
 // 获取筛选条件摘要
 const getFilterSummary = () => {
@@ -698,32 +699,33 @@ onMounted(() => {
 
 <style scoped>
 .question-bank-view {
-  padding: 20px;
-  background-color: #f5f5f5;
-  min-height: calc(100vh - 60px);
+  padding: var(--space-5);
+  background-color: var(--surface-secondary);
+  min-height: calc(100vh - var(--header-height));
 }
 
 .operation-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 16px 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .left-operations {
   display: flex;
-  gap: 16px;
+  gap: var(--space-3);
   align-items: center;
   flex-wrap: wrap;
 }
 
 .right-operations {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .search-input {
@@ -735,10 +737,11 @@ onMounted(() => {
 }
 
 .table-container {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--surface-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .question-content {
@@ -752,53 +755,53 @@ onMounted(() => {
 
 .type-icon {
   font-size: 18px;
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .difficulty-tag {
-  border-radius: 12px;
+  border-radius: var(--radius-full);
 }
 
 .knowledge-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .knowledge-tag {
-  border-radius: 12px;
-  background-color: #ecf5ff;
-  color: #409eff;
+  border-radius: var(--radius-full);
+  background-color: rgba(var(--color-primary-rgb), 0.1);
+  color: var(--color-primary);
   border: none;
 }
 
 .more-tag {
-  border-radius: 12px;
-  background-color: #f4f4f5;
-  color: #909399;
+  border-radius: var(--radius-full);
+  background-color: var(--surface-tertiary);
+  color: var(--text-secondary);
   border: none;
 }
 
 .operation-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .delete-btn {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 
 .pagination-container {
-  margin-top: 20px;
+  margin-top: var(--space-5);
   display: flex;
   justify-content: flex-end;
 }
 
 /* 表单样式 */
 .form-section {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #ebeef5;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .form-section:last-child {
@@ -809,13 +812,13 @@ onMounted(() => {
 .options-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .option-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .option-radio,
@@ -830,49 +833,49 @@ onMounted(() => {
 /* 预览样式 */
 .preview-header {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .preview-score {
   margin-left: auto;
-  color: #909399;
+  color: var(--text-secondary);
 }
 
 .preview-content {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   line-height: 1.8;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .preview-options {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .preview-option {
-  padding: 8px 12px;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  background-color: #f5f7fa;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  background-color: var(--surface-tertiary);
 }
 
 .preview-option.correct {
-  background-color: #f0f9ff;
-  border: 1px solid #409eff;
+  background-color: rgba(var(--color-primary-rgb), 0.05);
+  border: 1px solid var(--color-primary);
 }
 
 .option-label {
   font-weight: bold;
-  margin-right: 8px;
+  margin-right: var(--space-2);
 }
 
 .preview-answer,
 .preview-explanation {
-  padding: 12px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  margin-bottom: 12px;
+  padding: var(--space-3);
+  background-color: var(--surface-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
   line-height: 1.6;
 }
 
@@ -882,42 +885,42 @@ onMounted(() => {
 }
 
 .template-btn {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .import-progress {
-  margin-top: 20px;
+  margin-top: var(--space-5);
 }
 
 .progress-text {
   text-align: center;
-  margin-top: 8px;
-  color: #909399;
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
 }
 
 .import-result {
   display: flex;
   justify-content: space-around;
-  margin-top: 20px;
-  padding: 20px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  background-color: var(--surface-tertiary);
+  border-radius: var(--radius-xl);
 }
 
 .text-format-tip {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .similarity-summary {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-radius: 6px;
-  margin-bottom: 16px;
-  font-size: 14px;
-  color: #606266;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--font-size-base);
+  color: var(--text-regular);
 }
 
 .similarity-summary span:last-child {
@@ -926,28 +929,28 @@ onMounted(() => {
 
 .similarity-empty {
   text-align: center;
-  padding: 40px 20px;
-  color: #909399;
+  padding: var(--space-10) var(--space-5);
+  color: var(--text-secondary);
 }
 
 .similarity-config {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 24px;
-  font-size: 14px;
-  color: #606266;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  font-size: var(--font-size-base);
+  color: var(--text-regular);
 }
 
 .similarity-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .similarity-id {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 </style>

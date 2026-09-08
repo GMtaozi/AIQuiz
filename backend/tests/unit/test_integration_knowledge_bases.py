@@ -156,8 +156,9 @@ class TestKnowledgeBaseUpdate:
     """PUT /api/knowledge-bases/{kb_id} - Update knowledge base."""
 
     def test_update_kb_as_teacher(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        kb = _create_knowledge_base(db, 1)
+        teacher = _create_user(db, "kb_teacher_up", role=2)
+        token = _login(client, "kb_teacher_up")
+        kb = _create_knowledge_base(db, teacher.id)
         payload = {"name": "Updated KB Name"}
         resp = client.put(f"/api/knowledge-bases/{kb.id}", json=payload, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
@@ -180,8 +181,9 @@ class TestKnowledgeBaseDelete:
     """DELETE /api/knowledge-bases/{kb_id} - Delete knowledge base."""
 
     def test_delete_kb_as_teacher(self, client: TestClient, db: Session):
-        token = _teacher_token(client, db)
-        kb = _create_knowledge_base(db, 1)
+        teacher = _create_user(db, "kb_teacher_del", role=2)
+        token = _login(client, "kb_teacher_del")
+        kb = _create_knowledge_base(db, teacher.id)
         resp = client.delete(f"/api/knowledge-bases/{kb.id}", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
 

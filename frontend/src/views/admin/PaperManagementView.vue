@@ -61,7 +61,7 @@
 
     <!-- 试卷列表表格 -->
     <div class="table-container">
-      <el-empty v-if="!loading && paperList.length === 0" description="暂无试卷数据" :image-size="80" />
+      <BaseEmpty v-if="!loading && paperList.length === 0" description="暂无试卷数据" />
       <el-table
         v-else
         ref="tableRef"
@@ -151,6 +151,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Search, ArrowDown } from '@element-plus/icons-vue'
+import { BaseEmpty } from '@/components/common'
 import {
   loading,
   loadingCategories,
@@ -205,16 +206,17 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 16px 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .left-operations {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -228,27 +230,28 @@ onMounted(() => {
 
 .right-operations {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .table-container {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--surface-primary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .operation-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .delete-btn {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 
 .pagination-container {
-  margin-top: 20px;
+  margin-top: var(--space-5);
   display: flex;
   justify-content: flex-end;
 }

@@ -31,13 +31,13 @@ export const useThemeStore = defineStore('theme', () => {
     applyTheme()
   }
 
-  // 应用主题到 document
+  // 应用主题到 document（使用 data-theme 属性驱动CSS变量）
   function applyTheme() {
     const html = document.documentElement
     if (isDark.value) {
-      html.classList.add('dark-mode')
+      html.setAttribute('data-theme', 'dark')
     } else {
-      html.classList.remove('dark-mode')
+      html.removeAttribute('data-theme')
     }
   }
 
