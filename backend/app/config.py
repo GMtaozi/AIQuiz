@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     # License 授权文件路径（相对后端工作目录；缺失则进入试用模式）
     license_file: str = "license.key"
 
+    # SMTP 邮件通知（可选；smtp_enabled=false 时不发邮件）
+    smtp_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # 留空则使用 smtp_user
+
     @property
     def cookie_secure_flag(self) -> bool:
         """返回 set_cookie 的 secure 取值（P0：避免 token cookie 明文外泄）。

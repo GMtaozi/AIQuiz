@@ -23,11 +23,53 @@ def create_notification(
     评估 P1-11 修复：原实现内部 db.commit() 会破坏外层事务原子性
     （审核批量流程中每写一条通知就提交一次，中途失败会残留半成品状态）。
     改为 flush，事务提交由调用方统一控制。
+
+    扩展：创建通知后，根据通知类型决定是否发送邮件提醒。
+    邮件发送失败不影响主流程（日志记录后降级）。
     """
     notification = Notification(user_id=user_id, type=notification_type, title=title, content=content, link=link)
     db.add(notification)
     db.flush()
+
+    # 邮件通知（仅 warning/error/audit 类型，且需要知道用户邮箱）
+    # 邮件发送失败不影响通知创建（best-effort）
+    if user_id and notification_type in ("warning", "error", "audit"):
+        try:
+            _send_email_notification_async(db, user_id, title, content, notification_type)
+        except Exception:
+            pass  # 邮件发送失败不阻塞主流程
+
     return notification
+
+
+def _send_email_notification_async(
+    db: Session, user_id: int, title: str, content: str, notification_type: str
+) -> None:
+    """异步发送邮件通知（不阻塞主流程）
+
+    注意：邮件发送是 best-effort，失败不影响通知创建。
+    由于 create_notification 在事务 flush 阶段调用，邮件发送在事务提交前执行。
+    如果后续事务回滚，邮件可能已发送但通知未持久化，这是可接受的（邮件内容仍有效）。
+    """
+    try:
+        from app.models.user import User
+        from app.services.email_service import send_email_notification
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.email:
+            return
+
+        send_email_notification(
+            user_email=user.email,
+            title=title,
+            content=content,
+            notification_type=notification_type,
+        )
+    except Exception as e:
+        # 邮件发送失败不影响主流程
+        import logging
+
+        logging.getLogger(__name__).warning(f"邮件通知发送失败（不影响通知创建）: {e}")
 
 
 @router.get("", response_model=List[NotificationResponse])

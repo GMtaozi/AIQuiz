@@ -166,9 +166,24 @@
                     <div class="notification-text">{{ item.title }}</div>
                     <div class="notification-time">{{ formatTime(item.created_at) }}</div>
                   </div>
+                  <el-button
+                    type="danger"
+                    link
+                    size="small"
+                    class="notification-delete-btn"
+                    @click.stop="handleDeleteNotification(item)"
+                    title="删除"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </el-button>
                 </div>
               </div>
               <el-empty v-else description="暂无通知" :image-size="60" />
+              <div v-if="notificationStats.total > 10" class="notification-footer">
+                <el-button type="primary" link size="small">
+                  查看全部 {{ notificationStats.total }} 条通知
+                </el-button>
+              </div>
             </div>
           </el-popover>
 
@@ -217,7 +232,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -229,7 +244,7 @@ import {
   Collection, Connection, Setting, Bell, Moon, Sunny,
   UserFilled, ArrowDown, Search, DArrowLeft, DArrowRight,
   User, SwitchButton, School, Clock, InfoFilled, WarningFilled,
-  Key, FolderOpened, Goods
+  Key, FolderOpened, Goods, Close
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -242,6 +257,10 @@ const searchQuery = ref('')
 const notificationList = ref([])
 const notificationStats = ref({ unread: 0, pending_audit: 0, ai_tasks_completed: 0, ai_tasks_failed: 0 })
 const showPermissionDialog = ref(false)
+
+// 通知轮询定时器（30秒刷新一次）
+let notificationPollingTimer: ReturnType<typeof setInterval> | null = null
+const NOTIFICATION_POLLING_INTERVAL = 30000 // 30秒
 
 const isDark = computed(() => themeStore.isDark)
 const activeMenu = computed(() => route.path)
@@ -338,8 +357,40 @@ const handleNotificationClick = (item) => {
   }
 }
 
+// 删除单条通知
+const handleDeleteNotification = async (item) => {
+  try {
+    await notificationAPI.delete(item.id)
+    notificationList.value = notificationList.value.filter(n => n.id !== item.id)
+    notificationStats.value.total--
+    if (!item.is_read) {
+      notificationStats.value.unread--
+    }
+    ElMessage.success('已删除通知')
+  } catch (error) {
+    ElMessage.error('删除失败')
+  }
+}
+
+// 启动通知轮询
+const startNotificationPolling = () => {
+  if (notificationPollingTimer) return
+  notificationPollingTimer = setInterval(() => {
+    loadNotifications()
+  }, NOTIFICATION_POLLING_INTERVAL)
+}
+
+// 停止通知轮询
+const stopNotificationPolling = () => {
+  if (notificationPollingTimer) {
+    clearInterval(notificationPollingTimer)
+    notificationPollingTimer = null
+  }
+}
+
 onMounted(() => {
   loadNotifications()
+  startNotificationPolling()
   // 检查是否需要显示权限提示
   if (authStore.user?.needsAdminApproval) {
     showPermissionDialog.value = true
@@ -353,6 +404,10 @@ onMounted(() => {
   if (hasNoPermissions && route.path !== '/no-permission') {
     router.push('/no-permission')
   }
+})
+
+onUnmounted(() => {
+  stopNotificationPolling()
 })
 
 // 格式化时间
@@ -677,6 +732,22 @@ const formatTime = (timeStr) => {
   margin-top: 4px;
 }
 
+.notification-delete-btn {
+  opacity: 0;
+  transition: opacity $transition-fast;
+  flex-shrink: 0;
+
+  .notification-item:hover & {
+    opacity: 1;
+  }
+}
+
+.notification-footer {
+  text-align: center;
+  padding: $spacing-sm;
+  border-top: 1px solid $border-light;
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -817,6 +888,10 @@ const formatTime = (timeStr) => {
 
   .notification-item:hover {
     background: $dark-bg-tertiary;
+  }
+
+  .notification-footer {
+    border-color: $dark-border;
   }
 }
 </style>
