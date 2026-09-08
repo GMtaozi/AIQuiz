@@ -9,11 +9,11 @@
               :type="reviewMode ? 'success' : 'default'"
               @click="toggleReviewMode"
             >
-              <el-icon><Edit /></el-icon>
+              <Icon icon="mdi:pencil" />
               {{ reviewMode ? '列表模式' : '逐题审核模式' }}
             </el-button>
             <el-button type="primary" @click="fetchQuestions">
-              <el-icon><Refresh /></el-icon>
+              <Icon icon="mdi:refresh" />
               刷新
             </el-button>
           </div>
@@ -72,7 +72,7 @@
             @keyup.enter="handleSearch"
           >
             <template #prefix>
-              <el-icon><Search /></el-icon>
+              <Icon icon="mdi:magnify" />
             </template>
           </el-input>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
@@ -137,27 +137,27 @@
 
           <div class="review-actions">
             <el-button type="success" size="large" @click="approveCurrentQuestion">
-              <el-icon><Check /></el-icon>
+              <Icon icon="mdi:check" />
               通过
             </el-button>
             <el-button type="danger" size="large" @click="openRejectForCurrent">
-              <el-icon><Close /></el-icon>
+              <Icon icon="mdi:close" />
               驳回
             </el-button>
             <el-button size="large" @click="skipToNext" :disabled="currentReviewIndex >= questions.length - 1">
               跳过
-              <el-icon><DArrowRight /></el-icon>
+              <Icon icon="mdi:arrow-right" />
             </el-button>
           </div>
 
           <div class="review-nav">
             <el-button @click="previousQuestion" :disabled="currentReviewIndex === 0">
-              <el-icon><DArrowLeft /></el-icon>
+              <Icon icon="mdi:arrow-left" />
               上一题
             </el-button>
             <el-button @click="nextQuestion" :disabled="currentReviewIndex >= questions.length - 1">
               下一题
-              <el-icon><DArrowRight /></el-icon>
+              <Icon icon="mdi:arrow-right" />
             </el-button>
           </div>
         </div>
@@ -166,16 +166,16 @@
       <!-- 批量操作栏 -->
       <div class="batch-actions" v-if="!reviewMode && selectedQuestions.length > 0">
         <div class="selected-info">
-          <el-icon><Check /></el-icon>
+          <Icon icon="mdi:check" />
           已选中 <span class="count">{{ selectedQuestions.length }}</span> 项
         </div>
         <div class="action-buttons">
           <el-button type="success" @click="batchApprove">
-            <el-icon><Check /></el-icon>
+            <Icon icon="mdi:check" />
             批量通过
           </el-button>
           <el-button type="danger" @click="batchReject">
-            <el-icon><Close /></el-icon>
+            <Icon icon="mdi:close" />
             批量驳回
           </el-button>
           <el-button @click="clearSelection">清空选择</el-button>
@@ -338,7 +338,8 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { auditAPI, systemAPI } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Check, Close, Download, MagicStick, Edit, DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
+import { Download, MagicStick } from '@element-plus/icons-vue'
+import Icon from '@/components/common/Icon.vue'
 
 const tableRef = ref(null)
 const questions = ref([])

@@ -17,7 +17,7 @@
             <div class="card-header">
               <span class="title">出题配置</span>
               <el-button link @click="configPanelVisible = false">
-                <el-icon><DArrowRight /></el-icon>
+                <Icon icon="mdi:arrow-right" />
               </el-button>
             </div>
           </template>
@@ -137,7 +137,7 @@
             <!-- 操作按钮 -->
             <div class="form-actions">
               <el-button type="primary" :loading="generating" @click="startGeneration" style="width: 100%">
-                <el-icon v-if="!generating"><MagicStick /></el-icon>
+                <Icon v-if="!generating" icon="mdi:auto-fix" />
                 {{ generating ? '生成中...' : '开始生成' }}
               </el-button>
               <el-button @click="resetConfig">重置</el-button>
@@ -147,7 +147,7 @@
 
         <!-- 展开按钮（面板折叠时显示） -->
         <div v-show="!configPanelVisible" class="expand-btn" @click="configPanelVisible = true">
-          <el-icon><DArrowLeft /></el-icon>
+          <Icon icon="mdi:arrow-left" />
           <span>展开配置</span>
         </div>
       </el-col>
@@ -226,7 +226,7 @@
             <div v-if="failedQuestions.length > 0" class="failed-questions-panel">
               <div class="failed-header">
                 <span class="failed-title">
-                  <el-icon color="#F53F3F"><WarningFilled /></el-icon>
+                  <Icon icon="mdi:alert-circle" color="#F53F3F" />
                   提交失败 ({{ failedQuestions.length }})
                 </span>
                 <div class="failed-actions">
@@ -250,20 +250,19 @@
           </template>
 
           <!-- 空状态 -->
-          <div v-if="generatedQuestions.length === 0 && !generating" class="empty-state">
-            <div class="empty-illustration">
-              <svg width="200" height="160" viewBox="0 0 200 160">
-                <rect x="40" y="30" width="120" height="100" rx="8" fill="#EEF4FF" stroke="#165DFF" stroke-width="2"/>
-                <rect x="55" y="50" width="90" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
-                <rect x="55" y="65" width="70" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
-                <rect x="55" y="80" width="80" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
-                <rect x="55" y="95" width="60" height="8" rx="2" fill="#165DFF" opacity="0.3"/>
-                <circle cx="160" cy="40" r="25" fill="#00B42A" opacity="0.2"/>
-                <text x="160" y="46" text-anchor="middle" fill="#00B42A" font-size="20">?</text>
+          <BaseEmpty v-if="generatedQuestions.length === 0 && !generating" description="配置参数后点击'开始生成'，AI将为您智能生成题目">
+            <template #icon>
+              <svg width="120" height="100" viewBox="0 0 200 160">
+                <rect x="40" y="30" width="120" height="100" rx="8" fill="var(--surface-tertiary)" stroke="var(--color-primary)" stroke-width="2"/>
+                <rect x="55" y="50" width="90" height="8" rx="2" fill="var(--color-primary)" opacity="0.3"/>
+                <rect x="55" y="65" width="70" height="8" rx="2" fill="var(--color-primary)" opacity="0.3"/>
+                <rect x="55" y="80" width="80" height="8" rx="2" fill="var(--color-primary)" opacity="0.3"/>
+                <rect x="55" y="95" width="60" height="8" rx="2" fill="var(--color-primary)" opacity="0.3"/>
+                <circle cx="160" cy="40" r="25" fill="var(--color-success)" opacity="0.2"/>
+                <text x="160" y="46" text-anchor="middle" fill="var(--color-success)" font-size="20">?</text>
               </svg>
-            </div>
-            <div class="empty-link">配置参数后点击"开始生成"<br/>AI将为您智能生成题目</div>
-          </div>
+            </template>
+          </BaseEmpty>
 
           <!-- 骨架屏加载 -->
           <div v-else-if="generating" class="skeleton-list">
@@ -409,9 +408,11 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { systemAPI, knowledgeAPI, adminAPI, aiAPI } from '@/api'
-import { DArrowRight, MagicStick, DArrowLeft, Check } from '@element-plus/icons-vue'
+import { systemAPI, knowledgeAPI, adminAPI } from '@/api'
+import { Check } from '@element-plus/icons-vue'
 import { useGeneration } from '@/composables/useGeneration'
+import { BaseEmpty } from '@/components/common'
+import Icon from '@/components/common/Icon.vue'
 
 // Local UI state (not part of generation logic)
 const currentStep = ref(0)
@@ -741,15 +742,15 @@ onMounted(() => {
 
 /* 步骤指示器 */
 .steps-indicator {
-  background: #ffffff;
-  padding: 20px 24px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 20px;
+  background: var(--surface-primary);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--space-5);
 }
 
 .main-content {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 /* 配置面板 */
@@ -758,12 +759,12 @@ onMounted(() => {
 }
 
 .config-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
 }
 
 .config-form {
-  padding: 20px 0;
+  padding: var(--space-5) 0;
 }
 
 :deep(.config-form .el-form-item) {
@@ -773,13 +774,13 @@ onMounted(() => {
 .question-types-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: var(--space-2) var(--space-4);
 }
 
 .form-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 24px;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
 }
 
 .form-actions .el-button {
@@ -789,20 +790,20 @@ onMounted(() => {
 .mode-radio-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mode-radio-group {
   display: flex;
   flex-direction: row;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .mode-desc {
   display: inline;
-  font-size: 12px;
-  color: #6b7280;
-  margin-left: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-left: var(--space-1);
 }
 
 .difficulty-form-item {
@@ -815,29 +816,29 @@ onMounted(() => {
 .difficulty-layout {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   width: 100%;
 }
 
 .difficulty-radio-group {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .mixed-wrapper {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mixed-radio {
-  margin-right: 8px;
+  margin-right: var(--space-2);
 }
 
 .difficulty-rate {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex: 1;
 }
 
@@ -846,39 +847,39 @@ onMounted(() => {
 }
 
 .knowledge-hint {
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  color: #6b7280;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-tertiary);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
   text-align: center;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .expand-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 12px;
-  margin-top: 12px;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  gap: var(--space-1);
+  padding: var(--space-3);
+  margin-top: var(--space-3);
+  background: var(--surface-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  color: #165DFF;
-  font-size: 14px;
-  transition: all 0.2s ease;
+  color: var(--color-primary);
+  font-size: var(--font-size-base);
+  transition: all var(--transition-fast);
 }
 
 .expand-btn:hover {
-  background: #f5f9ff;
+  background: rgba(var(--color-primary-rgb), 0.05);
 }
 
 /* 预览区 */
 .preview-col {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 /* 进度区 */
@@ -887,19 +888,19 @@ onMounted(() => {
 }
 
 .progress-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
 }
 
 .progress-content {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
 }
 
 .progress-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
 }
 
 .progress-item {
@@ -909,20 +910,20 @@ onMounted(() => {
 }
 
 .progress-item .label {
-  color: #6b7280;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
 }
 
 .progress-item .value {
-  color: #1f2937;
-  font-size: 14px;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
   font-weight: 500;
 }
 
 .log-container {
-  margin-top: 24px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  margin-top: var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -930,32 +931,32 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 16px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-  font-size: 14px;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-tertiary);
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--font-size-base);
   font-weight: 500;
-  color: #374151;
+  color: var(--text-regular);
 }
 
 .log-content {
   max-height: 200px;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   background: #1f2937;
 }
 
 .log-item {
   display: flex;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 13px;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
 .log-time {
   color: #6b7280;
-  font-family: monospace;
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
@@ -982,56 +983,56 @@ onMounted(() => {
 .log-empty {
   text-align: center;
   color: #9ca3af;
-  padding: 40px 0;
+  padding: var(--space-10) 0;
 }
 
 /* 结果卡片 */
 .result-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  margin-bottom: 20px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--space-5);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* 提交失败面板 */
 .failed-questions-panel {
-  background: #FFF7F7;
-  border: 1px solid #FFCCC7;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  background: rgba(245, 108, 108, 0.05);
+  border: 1px solid rgba(245, 108, 108, 0.2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .failed-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .failed-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: var(--space-2);
+  font-size: var(--font-size-base);
   font-weight: 500;
-  color: #F53F3F;
+  color: var(--color-danger);
 }
 
 .failed-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .failed-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -1040,10 +1041,10 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
-  padding: 8px 12px;
-  border-radius: 4px;
-  border: 1px solid #FFE4E4;
+  background: var(--surface-primary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(245, 108, 108, 0.15);
 }
 
 .failed-content {
@@ -1052,9 +1053,9 @@ onMounted(() => {
 }
 
 .failed-question {
-  font-size: 13px;
-  color: #333;
-  margin-bottom: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1063,125 +1064,125 @@ onMounted(() => {
 .failed-error {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .failed-time {
-  font-size: 12px;
-  color: #999;
+  font-size: var(--font-size-xs);
+  color: var(--text-placeholder);
 }
 
 /* 空状态 */
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--space-10) var(--space-5);
 }
 
 .empty-illustration {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .empty-link {
-  font-size: 14px;
-  color: #6b7280;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
 /* 骨架屏 */
 .skeleton-list {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 .skeleton-item {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 /* 题目列表 */
 .question-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .question-item {
-  background: #f9fafb;
-  border-radius: 8px;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.2s ease;
+  background: var(--surface-tertiary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  transition: all var(--transition-fast);
 }
 
 .question-item:hover {
-  border-color: #165DFF;
-  box-shadow: 0 2px 8px rgba(22, 93, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(var(--color-primary-rgb), 0.1);
 }
 
 .question-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .question-index {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--font-size-xs);
+  color: var(--text-placeholder);
   font-weight: 500;
 }
 
 .question-actions {
   margin-left: auto;
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .question-content {
-  font-size: 14px;
-  color: #1f2937;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
   line-height: 1.6;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .question-options {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .option-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #374151;
-  padding: 6px 10px;
-  background: #ffffff;
-  border-radius: 4px;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-regular);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-primary);
+  border-radius: var(--radius-md);
 }
 
 .option-label {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .question-answer {
-  background: #ffffff;
-  padding: 10px 12px;
-  border-radius: 4px;
-  font-size: 13px;
+  background: var(--surface-primary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
 }
 
 .answer-label {
-  color: #00B42A;
+  color: var(--color-success);
   font-weight: 500;
-  margin-right: 8px;
+  margin-right: var(--space-2);
 }
 
 /* 历史任务 */
 .history-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
@@ -1191,9 +1192,9 @@ onMounted(() => {
 }
 
 .card-header .title {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 @keyframes fadeIn {

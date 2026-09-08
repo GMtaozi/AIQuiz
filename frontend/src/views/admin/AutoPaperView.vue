@@ -6,15 +6,15 @@
           <h3>智能组卷</h3>
           <div class="header-actions">
             <el-button @click="saveDraft" :disabled="currentStep < 4">
-              <el-icon><Document /></el-icon>
+              <Icon icon="mdi:content-save" />
               保存草稿
             </el-button>
             <el-button @click="saveAsTemplate" :disabled="!paperForm.subjectId">
-              <el-icon><Star /></el-icon>
+              <Icon icon="mdi:star" />
               保存为模板
             </el-button>
             <el-button type="primary" @click="publishPaper" :disabled="currentStep < 4">
-              <el-icon><Promotion /></el-icon>
+              <Icon icon="mdi:send" />
               直接发布
             </el-button>
           </div>
@@ -24,12 +24,12 @@
       <!-- 步骤条 -->
       <div class="steps-container">
         <el-steps :active="currentStep" finish-status="success" align-center>
-          <el-step title="选择模板" :icon="Document" />
-          <el-step title="基本信息" :icon="Edit" />
-          <el-step title="知识点配置" :icon="Collection" />
-          <el-step title="试卷大纲" :icon="Menu" />
-          <el-step title="AI分配题目" :icon="MagicStick" />
-          <el-step title="调整预览" :icon="View" />
+          <el-step title="选择模板" icon="mdi:file-document-outline" />
+          <el-step title="基本信息" icon="mdi:pencil" />
+          <el-step title="知识点配置" icon="mdi:treasure-chest" />
+          <el-step title="试卷大纲" icon="mdi:menu" />
+          <el-step title="AI分配题目" icon="mdi:auto-fix" />
+          <el-step title="调整预览" icon="mdi:eye" />
         </el-steps>
       </div>
 
@@ -46,14 +46,14 @@
               @click="selectTemplate(template)"
             >
               <div class="template-icon">
-                <el-icon :size="32"><component :is="template.icon" /></el-icon>
+                <Icon :icon="template.icon" :size="32" />
               </div>
               <div class="template-info">
                 <h5>{{ template.name }}</h5>
                 <p>{{ template.description }}</p>
                 <div class="template-meta">
-                  <span><el-icon><QuestionFilled /></el-icon> {{ template.questionCount }}题</span>
-                  <span><el-icon><Timer /></el-icon> {{ template.duration }}分钟</span>
+                  <span><Icon icon="mdi:help-circle" /> {{ template.questionCount }}题</span>
+                  <span><Icon icon="mdi:timer" /> {{ template.duration }}分钟</span>
                 </div>
               </div>
               <div v-if="selectedTemplate?.id === template.id" class="template-check">
@@ -241,7 +241,7 @@
           </p>
 
           <div v-if="outlineLoading" class="outline-loading">
-            <el-icon class="is-loading"><Loading /></el-icon>
+            <Icon icon="mdi:loading" spin />
             <span>AI 正在生成大纲...</span>
           </div>
 
@@ -274,7 +274,7 @@
 
             <div class="outline-actions">
               <el-button @click="regenerateOutline" :loading="outlineLoading">
-                <el-icon><Refresh /></el-icon>
+                <Icon icon="mdi:refresh" />
                 重新生成
               </el-button>
             </div>
@@ -370,14 +370,14 @@
             </div>
             <div class="summary-item" v-if="!skipKnowledgePoints">
               <el-button type="warning" size="small" @click="autoAdjustDifficulty">
-                <el-icon><MagicStick /></el-icon>
+                <Icon icon="mdi:auto-fix" />
                 智能调整难度分布
               </el-button>
             </div>
             <div class="summary-item" v-else>
               <el-tooltip content="不选择知识点时，题目难度为默认值，无需调整分布">
                 <el-button type="warning" size="small" disabled>
-                  <el-icon><MagicStick /></el-icon>
+                  <Icon icon="mdi:auto-fix" />
                   智能调整难度分布
                 </el-button>
               </el-tooltip>
@@ -386,11 +386,11 @@
 
           <div class="ai-generate-action">
             <el-button type="primary" size="large" @click="generateQuestions" :loading="generating">
-              <el-icon v-if="!generating"><MagicStick /></el-icon>
+              <Icon v-if="!generating" icon="mdi:auto-fix" />
               {{ generating ? 'AI正在分配题目...' : 'AI智能分配题目' }}
             </el-button>
             <el-button size="large" @click="generateABPapers" :loading="generating">
-              <el-icon><DocumentCopy /></el-icon>
+              <Icon icon="mdi:file-document-multiple" />
               生成 A/B 卷
             </el-button>
           </div>
@@ -408,15 +408,15 @@
             <h4>试卷预览</h4>
             <div class="preview-actions" v-if="generatedQuestions.length > 0">
               <el-button @click="reorderQuestions">
-                <el-icon><Rank /></el-icon>
+                <Icon icon="mdi:swap-vertical" />
                 调整顺序
               </el-button>
               <el-button @click="exportWord">
-                <el-icon><Download /></el-icon>
+                <Icon icon="mdi:download" />
                 导出Word
               </el-button>
               <el-button @click="exportPdf">
-                <el-icon><Download /></el-icon>
+                <Icon icon="mdi:download" />
                 导出PDF
               </el-button>
             </div>
@@ -444,7 +444,7 @@
                 @drop="handleDrop(index)"
               >
                 <div class="question-number">
-                  <el-icon class="drag-handle"><Rank /></el-icon>
+                  <Icon icon="mdi:drag-vertical" class="drag-handle" />
                   <span>{{ index + 1 }}</span>
                 </div>
                 <div class="question-content">
@@ -469,11 +469,11 @@
                 </div>
                 <div class="question-actions">
                   <el-button link size="small" @click="replaceQuestion(index)">
-                    <el-icon><RefreshRight /></el-icon>
+                    <Icon icon="mdi:refresh" />
                     替换
                   </el-button>
                   <el-button link size="small" @click="removeQuestion(index)">
-                    <el-icon><Delete /></el-icon>
+                    <Icon icon="mdi:delete" />
                   </el-button>
                 </div>
               </div>
@@ -496,13 +496,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Document, Edit, Collection, MagicStick, View,
-  Check, QuestionFilled, Timer, Promotion, Rank,
-  Download, RefreshRight, Delete, Star, DocumentCopy,
-  Menu, Loading, Refresh
-} from '@element-plus/icons-vue'
 import { useAutoPaper } from '@/composables/useAutoPaper'
+import Icon from '@/components/common/Icon.vue'
 
 const {
   // State
