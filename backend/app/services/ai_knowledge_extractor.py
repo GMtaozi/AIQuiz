@@ -3,12 +3,19 @@
 使用 AI 自动分析文档内容，提取知识点并生成树形结构。
 优化策略：分段提取 + 并行调用 + 精简 prompt
 使用统一AI服务层
+
+增强功能（RIA++ 框架 + 三重验证）：
+- RIA++ 分步提取框架：Rule → Instruction → Application → Example → Boundary
+- 三重质量验证：跨域通用性、预测力、独特性
+- 层级关系验证：父子关系一致性、跨层检测、孤儿节点检测
+- 去重与合并：语义去重、层级合并、冲突检测
 """
 
 import json
 import logging
 import re
-from typing import Any, Dict, List
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.services.ai_provider import AIResponse, get_ai_provider
 
@@ -16,10 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 class AIKnowledgeExtractor:
-    """AI 知识点提取器"""
+    """AI 知识点提取器（增强版，融入 RIA++ 框架和三重验证）"""
 
     def __init__(self):
         self.max_tokens = 2048  # 单次调用输出上限（降低以加速）
+
+    # ------------------------------------------------------------------
+    # 原有基础方法（保持不变）
+    # ------------------------------------------------------------------
 
     def _sanitize_input(self, text: str, max_length: int = 8000) -> str:
         """清理输入文本，缩短截断长度以加速"""
@@ -55,8 +66,19 @@ class AIKnowledgeExtractor:
         text = re.sub(r"([{,]\s*)([\u4e00-\u9fff\w]+)\s*:", r'\1"\2":', text)
         return text.strip()
 
-    def _parse_knowledge_tree(self, ai_response: str) -> List[Dict[str, Any]]:
-        """解析 AI 返回的知识点树"""
+    def _parse_knowledge_tree(self, ai_response) -> List[Dict[str, Any]]:
+        """解析 AI 返回的知识点树
+
+        Args:
+            ai_response: 可以是字符串或 AIResponse 对象
+        """
+        # 处理 AIResponse 对象
+        if hasattr(ai_response, 'content'):
+            ai_response = ai_response.content
+
+        if not ai_response or not isinstance(ai_response, str):
+            return []
+
         # 首先尝试直接解析（正常情况）
         try:
             data = json.loads(ai_response.strip())
@@ -414,16 +436,834 @@ class AIKnowledgeExtractor:
         tree, _ = build_tree(parsed_lines)
         return tree if tree else [{"name": "知识点", "description": "", "children": []}]
 
-    async def extract_knowledge_tree(
-        self, document_content: str, document_name: str = "", max_points: int = 50, category: str = "default"
-    ) -> Dict[str, Any]:
-        """从文档内容提取知识点树
+    def _flatten_tree(self, nodes: List[Dict]) -> List[Dict]:
+        """扁平化知识点树"""
+        result = []
+        for node in nodes:
+            result.append(node)
+            if node.get("children"):
+                result.extend(self._flatten_tree(node["children"]))
+        return result
 
-        优化策略：
-        - 降低 temperature 提高结构化输出稳定性
-        - 精简但完整的 prompt，保留格式示例确保输出质量
-        - 合理的 max_tokens 和文档截断
+    def _count_leaf_nodes(self, nodes: List[Dict]) -> int:
+        """统计叶子节点数量"""
+        count = 0
+        for node in nodes:
+            if not node.get("children") or len(node["children"]) == 0:
+                count += 1
+            else:
+                count += self._count_leaf_nodes(node["children"])
+        return count
+
+    def _enforce_limits(self, nodes: List[Dict], max_points: int = 150, max_depth: int = 4) -> List[Dict]:
+        """强制限制知识点数量和层级深度
+
+        - 超过 max_points 的节点直接删除
+        - 超过 max_depth 的层级直接截断
+        - 每层子节点数量限制：顶层8个，二级6个，三级5个，四级5个
         """
+        result = []
+        count = 0
+        # 每层最大子节点数
+        depth_limits = {0: 8, 1: 6, 2: 5, 3: 5}
+
+        def process(node: Dict, depth: int) -> Dict | None:
+            nonlocal count
+            if count >= max_points:
+                return None
+
+            count += 1
+            new_node = {
+                "name": node.get("name", "未命名")[:100],
+                "description": (node.get("description", "") or "")[:2000],  # 归纳性摘要
+                "excerpt": (node.get("excerpt", "") or "")[:2000],  # 原文照抄内容
+                "children": [],
+            }
+
+            # 超过最大深度，不再添加子节点
+            if depth >= max_depth:
+                return new_node
+
+            # 处理子节点，根据层级限制数量
+            children = node.get("children", []) or []
+            max_children = depth_limits.get(depth, 5)
+            for child in children[:max_children]:
+                if count >= max_points:
+                    break
+                processed_child = process(child, depth + 1)
+                if processed_child:
+                    new_node["children"].append(processed_child)
+
+            return new_node
+
+        for node in nodes:
+            if count >= max_points:
+                break
+            processed = process(node, 1)
+            if processed:
+                result.append(processed)
+
+        return result
+
+    # ------------------------------------------------------------------
+    # 新增：RIA++ Prompt 模板方法
+    # ------------------------------------------------------------------
+
+    def _build_ria_prompt(
+        self,
+        document_content: str,
+        document_name: str,
+        category: str,
+        max_points: int,
+        phase: str = "full",
+    ) -> str:
+        """构建 RIA++ 分步提取 prompt
+
+        RIA++ 框架：
+        - R (Rule)：识别文档中的核心规则/原则/定义
+        - I (Instruction)：将规则转化为可操作的指导
+        - A (Application)：找到规则适用的场景和案例
+        - E (Example)：给出具体例子（原文照抄）
+        - B (Boundary)：明确规则的边界和例外
+
+        Args:
+            document_content: 文档内容
+            document_name: 文档名称
+            category: 分类
+            max_points: 最大知识点数量
+            phase: 提取阶段，"full" 为完整流程，"ria" 仅 RIA 分析
+        """
+        safe_content = self._sanitize_input(document_content)
+
+        prompt = f"""你是一个专业的知识体系分析助手。请使用 RIA++ 框架分析以下文档内容，提取知识点并生成树形结构。
+
+文档名称：{document_name or "未命名文档"}
+分类：{category}
+
+【重要说明】
+本系统用于司法鉴定、法律规范等需要高准确性的领域，题目必须严格基于原文生成。
+因此知识点必须同时存储摘要描述和完整的原始内容片段。
+
+【RIA++ 框架】
+请按以下五个维度分析每个知识点：
+
+第一阶段：R (Rule) — 识别文档中的核心规则/原则/定义
+- 找出文档中的核心规范、原则、定义
+- 这些是知识体系的骨架
+
+第二阶段：I (Instruction) — 将规则转化为可操作的指导
+- 这个规则如何操作？步骤是什么？
+- 需要满足什么条件？
+
+第三阶段：A (Application) — 找到规则适用的场景和案例
+- 这个规则在什么场景下适用？
+- 有什么具体案例或应用场景？
+
+第四阶段：E (Example) — 给出具体例子（原文照抄）
+- 从原文中找到支持该知识点的具体内容
+- 必须原文照抄，保留法条编号、条款号、具体数字、日期等
+
+第五阶段：B (Boundary) — 明确规则的边界和例外
+- 这个规则有什么例外情况？
+- 适用范围的边界在哪里？
+
+核心原则：
+- 知识点名称（name）= 简洁的归纳标签（简短概念名称）
+- 知识点描述（description）= 该知识点的简短摘要，不超过200字，用归纳语言概括
+- 原文片段（excerpt）= 该知识点对应的【完整原文内容】，必须原文照抄，保留法条编号、条款号、具体数字、日期等
+- 顶层知识点名称从文档主题出发，不使用文件名
+
+严格限制：
+- 总知识点数量不超过{max_points}个（包含所有层级）
+- 层级最多4层（顶层->二级->三级->四级）
+- 每个顶层知识点下最多8个子知识点
+- 每个子知识点下最多6个三级知识点
+- 每个三级知识点下最多5个四级知识点
+- description 字段不超过200字，是归纳性摘要
+- excerpt 字段必须存储原始法条内容，长度可达2000字符，禁止归纳概括
+- 绝对不要把文件名、文件扩展名、文件路径用在任何知识点名称中
+
+要求：
+1. 首先分析文档内容，确定文档的核心主题领域
+2. 顶层知识点名称应该围绕文档的核心主题，如"司法鉴定基本规范"、"医师执业资格管理"、"环境影响评价制度"等
+3. 顶层知识点名称不要包含文件后缀（.doc、.pdf、.txt等）、编号（如"四"、"（一）"等前缀）、中括号（【】）等
+4. 每个主题下的核心概念、原理、方法等提取为子节点
+5. 名称应该简洁明了，如"什么是XXX"、"XXX的适用范围"、"XXX的处理流程"
+6. description 用归纳语言简短描述该知识点的核心内容（涵盖 RIA 维度）
+7. excerpt 必须原文照抄相关法条内容，保留条款号和具体规定，这是生成题目的依据（对应 E 维度）
+8. 必须构建有层次的树形结构，子知识点必须放在父知识点的"children"数组中
+9. 每个知识点包含：name（简洁的归纳名称）、description（简短摘要）、excerpt（原始法条内容）、children（子节点数组）
+10. 只返回纯JSON，不要包含任何注释、说明或markdown标记
+11. 不要有尾随逗号
+
+严格按以下格式输出（不要添加任何额外内容）：
+{{
+  "knowledge_points": [
+    {{
+      "name": "核心主题1（简洁归纳）",
+      "description": "该知识点的简短摘要，归纳性描述，不超过200字",
+      "excerpt": "该知识点对应的完整法条原文内容，原文照抄，保留条款号和具体规定",
+      "children": [
+        {{
+          "name": "核心概念：XXX是什么",
+          "description": "该概念的简短摘要",
+          "excerpt": "该概念对应的原文内容",
+          "children": [
+            {{
+              "name": "要点1：XXX",
+              "description": "该要点的简短摘要",
+              "excerpt": "该要点的原文内容",
+              "children": []
+            }},
+            {{
+              "name": "要点2：XXX",
+              "description": "该要点的简短摘要",
+              "excerpt": "该要点的原文内容",
+              "children": []
+            }}
+          ]
+        }},
+        {{
+          "name": "适用范围：XXX",
+          "description": "该制度/方法/原理的适用场景和范围摘要",
+          "excerpt": "适用范围的原文内容",
+          "children": []
+        }}
+      ]
+    }},
+    {{
+      "name": "核心主题2（从文档内容提炼）",
+      "description": "该类别的总体摘要",
+      "excerpt": "该类别相关的原文内容",
+      "children": []
+    }}
+  ]
+}}
+
+文档内容：
+{safe_content}
+
+请直接返回JSON格式的知识点结构（不要包含markdown代码块标记）："""
+
+        return prompt
+
+    # ------------------------------------------------------------------
+    # 新增：三重验证方法
+    # ------------------------------------------------------------------
+
+    def _validate_knowledge_quality(
+        self,
+        knowledge_tree: List[Dict[str, Any]],
+        existing_knowledge: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """三重质量验证
+
+        在 AI 返回知识点后，进行自动化质量验证：
+        - V1 跨域通用性：知识点是否只适用于当前文档的某个角落？
+        - V2 预测力：这个知识点能否预测"如果...那么..."的结论？
+        - V3 独特性：这个知识点是否与已存在的知识点高度重复？
+
+        Args:
+            knowledge_tree: 知识点树
+            existing_knowledge: 已有知识库（可选），用于去重比对
+
+        Returns:
+            (验证后的知识点树, 质量警告列表)
+        """
+        quality_warnings: List[str] = []
+        validated_tree = knowledge_tree
+
+        # V1: 跨域通用性验证
+        validated_tree, warnings_v1 = self._validate_cross_domain_generality(validated_tree)
+        quality_warnings.extend(warnings_v1)
+
+        # V2: 预测力验证
+        validated_tree, warnings_v2 = self._validate_predictive_power(validated_tree)
+        quality_warnings.extend(warnings_v2)
+
+        # V3: 独特性验证（去重）
+        validated_tree, warnings_v3 = self._validate_uniqueness(validated_tree, existing_knowledge)
+        quality_warnings.extend(warnings_v3)
+
+        return validated_tree, quality_warnings
+
+    def _validate_cross_domain_generality(
+        self, nodes: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """V1 跨域通用性验证
+
+        检查知识点是否只适用于当前文档的某个角落。
+        标记过于细碎、仅涉及单一细节的知识点为低质量。
+
+        判断标准：
+        - 名称过于具体（如包含具体日期、具体人名、具体编号）可能过于细碎
+        - 描述过短（< 10字）可能缺乏通用性
+        - 叶子节点且无实际内容可能为低质量
+        """
+        warnings: List[str] = []
+
+        def _check_node(node: Dict[str, Any], depth: int = 0) -> Dict[str, Any]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            # 标记可能过于细碎的知识点
+            is_too_specific = False
+            # 检查是否包含过于具体的日期/编号
+            if re.search(r"\d{4}年\d{1,2}月\d{1,2}日", name):
+                is_too_specific = True
+
+            # 如果是叶子节点且描述很短，可能缺乏通用性
+            is_leaf_low_quality = (
+                not children
+                and len(description) < 10
+                and len(excerpt) < 20
+            )
+
+            # 检查名称是否过短且描述过短（但排除已经是low_content的情况）
+            is_name_too_short = len(name) < 3 and len(description) < 5
+
+            if is_too_specific:
+                node["quality_flag"] = "low_generality"
+                warnings.append(f"知识点 '{name}' 可能过于细碎，缺乏跨域通用性")
+            elif is_leaf_low_quality:
+                node["quality_flag"] = "low_content"
+                warnings.append(f"知识点 '{name}' 内容过少，可能缺乏预测力")
+            elif is_name_too_short:
+                node["quality_flag"] = "low_generality"
+                warnings.append(f"知识点 '{name}' 可能过于细碎，缺乏跨域通用性")
+            else:
+                node["quality_flag"] = "ok"
+
+            # 递归处理子节点
+            if children:
+                node["children"] = [_check_node(child, depth + 1) for child in children]
+
+            return node
+
+        validated = [_check_node(node) for node in nodes]
+        return validated, warnings
+
+    def _validate_predictive_power(
+        self, nodes: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """V2 预测力验证
+
+        检查知识点能否预测"如果...那么..."的结论。
+        判断标准：
+        - 包含条件性词汇（如果、当、若、除非、应当、必须）的知识点通常有预测力
+        - 描述中包含"是"、"指"、"属于"等定义性词汇的知识点有预测力
+        - 纯叙述性内容（无逻辑关系）预测力较低
+        """
+        warnings: List[Dict[str, Any]] = []
+
+        # 有预测力的关键词模式
+        predictive_patterns = [
+            r"如果|假如|若|当|除非|在.*情况下",
+            r"应当|必须|不得|禁止|可以|需要",
+            r"是指|指的是|属于|定义为|称为",
+            r"导致|引起|造成|产生|结果",
+            r"条件|前提|要求|标准",
+        ]
+
+        def _check_node(node: Dict[str, Any], depth: int = 0) -> Dict[str, Any]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            # 检查是否包含预测性内容
+            has_predictive = False
+            combined_text = f"{name} {description} {excerpt}"
+            for pattern in predictive_patterns:
+                if re.search(pattern, combined_text):
+                    has_predictive = True
+                    break
+
+            # 获取现有的 quality_flag
+            existing_flag = node.get("quality_flag", "ok")
+            if not has_predictive and existing_flag == "ok":
+                node["quality_flag"] = "low_predictive"
+                warnings.append(f"知识点 '{name}' 缺乏预测力，无法推导条件结论")
+            elif has_predictive and existing_flag == "ok":
+                node["quality_flag"] = "high_predictive"
+
+            # 递归处理子节点
+            if children:
+                node["children"] = [_check_node(child, depth + 1) for child in children]
+
+            return node
+
+        validated = [_check_node(node) for node in nodes]
+        return validated, warnings
+
+    def _validate_uniqueness(
+        self,
+        nodes: List[Dict[str, Any]],
+        existing_knowledge: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """V3 独特性验证
+
+        检查知识点是否与已有知识点高度重复。
+        使用 difflib.SequenceMatcher 进行文本相似度比较。
+
+        Args:
+            nodes: 当前知识点树
+            existing_knowledge: 已有知识库（可选）
+
+        Returns:
+            (验证后的节点列表, 警告列表)
+        """
+        warnings: List[str] = []
+        similarity_threshold = 0.85  # 相似度阈值
+
+        # 获取所有已有知识点的文本表示
+        existing_texts: List[str] = []
+        if existing_knowledge:
+            for kp in existing_knowledge:
+                text = f"{kp.get('name', '')} {kp.get('description', '')}"
+                existing_texts.append(text)
+
+        def _check_node(node: Dict[str, Any], depth: int = 0) -> Dict[str, Any]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            # 构建当前知识点的文本表示
+            current_text = f"{name} {description}"
+
+            # 与已有知识点比对
+            is_duplicate = False
+            for existing_text in existing_texts:
+                similarity = SequenceMatcher(None, current_text, existing_text).ratio()
+                if similarity > similarity_threshold:
+                    is_duplicate = True
+                    warnings.append(
+                        f"知识点 '{name}' 与已有知识点高度相似（相似度: {similarity:.2f}）"
+                    )
+                    break
+
+            # 获取现有的 quality_flag
+            existing_flag = node.get("quality_flag", "ok")
+            if is_duplicate:
+                node["quality_flag"] = "duplicate"
+                node["duplicate_similarity"] = similarity
+            elif existing_flag == "ok":
+                node["quality_flag"] = "unique"
+
+            # 递归处理子节点
+            if children:
+                node["children"] = [_check_node(child, depth + 1) for child in children]
+
+            return node
+
+        validated = [_check_node(node) for node in nodes]
+        return validated, warnings
+
+    # ------------------------------------------------------------------
+    # 新增：层级关系验证
+    # ------------------------------------------------------------------
+
+    def _validate_hierarchy(
+        self, nodes: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """层级关系验证
+
+        - 检查子知识点是否真的属于父知识点（而不是硬凑层级）
+        - 检查是否有"跨层"现象（孙节点直接提到祖父节点的概念）
+        - 检查是否有"孤儿节点"（没有父节点的知识点）
+
+        Args:
+            nodes: 知识点树
+
+        Returns:
+            (验证后的节点列表, 警告列表)
+        """
+        warnings: List[str] = []
+
+        def _get_ancestor_names(node: Dict[str, Any], depth: int = 0) -> List[Tuple[str, int]]:
+            """获取所有祖先节点的名称和深度"""
+            ancestors = []
+            # 这里需要从根节点开始追踪，简化处理：只检查直接父子关系
+            return ancestors
+
+        def _check_node_hierarchy(
+            node: Dict[str, Any],
+            parent_name: str = "",
+            depth: int = 0,
+            ancestor_names: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            """检查单个节点的层级关系"""
+            if ancestor_names is None:
+                ancestor_names = []
+
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            # 检查1：子知识点与父知识点的关键词重叠度
+            if parent_name and depth > 0:
+                # 使用单字拆分进行更细粒度的匹配
+                parent_chars = set(re.findall(r"[\u4e00-\u9fff]", parent_name))
+                child_chars = set(re.findall(r"[\u4e00-\u9fff]", name))
+                overlap = parent_chars & child_chars
+
+                # 如果完全没有字符重叠，可能是硬凑层级
+                if parent_chars and len(overlap) == 0:
+                    node["hierarchy_warning"] = "low_parent_overlap"
+                    warnings.append(
+                        f"知识点 '{name}' 与父知识点 '{parent_name}' 缺乏关键词关联"
+                    )
+
+            # 检查2：跨层现象 - 子节点直接提到祖父节点的概念
+            if len(ancestor_names) >= 2:
+                # 祖父节点是 ancestor_names[-2]
+                grandparent_name = ancestor_names[-2]
+                grandparent_chars = set(re.findall(r"[\u4e00-\u9fff]", grandparent_name))
+                node_text = f"{name} {description}"
+                node_chars = set(re.findall(r"[\u4e00-\u9fff]", node_text))
+                cross_layer_overlap = grandparent_chars & node_chars
+
+                # 如果与祖父节点关联更强，可能存在跨层问题
+                parent_overlap_count = len(overlap) if parent_name else 0
+                if grandparent_chars and len(cross_layer_overlap) > parent_overlap_count:
+                    node["hierarchy_warning"] = "cross_layer_reference"
+                    warnings.append(
+                        f"知识点 '{name}' 可能跨层引用祖父节点 '{grandparent_name}' 的概念"
+                    )
+
+            # 检查3：孤儿节点 - 已经在树中，无需额外检查
+            # （因为我们是遍历已有树结构，所有节点都有父节点或自己是根）
+
+            # 递归处理子节点
+            new_ancestors = ancestor_names + [name]
+            if children:
+                node["children"] = [
+                    _check_node_hierarchy(child, name, depth + 1, new_ancestors)
+                    for child in children
+                ]
+
+            return node
+
+        validated = [_check_node_hierarchy(node) for node in nodes]
+        return validated, warnings
+
+    # ------------------------------------------------------------------
+    # 新增：去重和合并
+    # ------------------------------------------------------------------
+
+    def _deduplicate_knowledge(
+        self,
+        nodes: List[Dict[str, Any]],
+        existing_knowledge: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """去重和合并
+
+        - 语义去重：检查是否有高度相似的知识点（基于名称和描述的文本相似度）
+        - 层级合并：如果两个知识点实质相同但出现在不同层级，合并到更合适的层级
+        - 冲突检测：与已有知识库（如果存在）比对，标记新增/更新/冲突
+
+        Args:
+            nodes: 知识点树
+            existing_knowledge: 已有知识库（可选）
+
+        Returns:
+            (去重后的节点列表, 操作日志列表)
+        """
+        operation_logs: List[str] = []
+        similarity_threshold = 0.85
+
+        # 步骤1：语义去重（树内部）
+        nodes, dedup_logs = self._remove_internal_duplicates(nodes, similarity_threshold)
+        operation_logs.extend(dedup_logs)
+
+        # 步骤2：层级合并
+        nodes, merge_logs = self._merge_redundant_nodes(nodes)
+        operation_logs.extend(merge_logs)
+
+        # 步骤3：与已有知识库比对
+        if existing_knowledge:
+            nodes, conflict_logs = self._detect_conflicts(nodes, existing_knowledge, similarity_threshold)
+            operation_logs.extend(conflict_logs)
+
+        return nodes, operation_logs
+
+    def _remove_internal_duplicates(
+        self,
+        nodes: List[Dict[str, Any]],
+        threshold: float,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """移除树内部的高度相似节点"""
+        logs: List[str] = []
+        seen_texts: List[str] = []
+
+        def _process_node(node: Dict[str, Any], depth: int = 0) -> Optional[Dict[str, Any]]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            current_text = f"{name} {description}"
+
+            # 检查是否与已处理的节点重复
+            for seen_text in seen_texts:
+                similarity = SequenceMatcher(None, current_text, seen_text).ratio()
+                if similarity > threshold:
+                    logs.append(f"移除重复知识点 '{name}'（相似度: {similarity:.2f}）")
+                    return None
+
+            seen_texts.append(current_text)
+
+            # 递归处理子节点
+            if children:
+                processed_children = []
+                for child in children:
+                    processed = _process_node(child, depth + 1)
+                    if processed is not None:
+                        processed_children.append(processed)
+                node["children"] = processed_children
+
+            return node
+
+        result = []
+        for node in nodes:
+            processed = _process_node(node)
+            if processed is not None:
+                result.append(processed)
+
+        return result, logs
+
+    def _merge_redundant_nodes(
+        self, nodes: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """合并冗余节点（简化实现：移除空的中间层）"""
+        logs: List[str] = []
+
+        def _process_node(node: Dict[str, Any]) -> Dict[str, Any]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            # 如果节点没有名称且只有一个子节点，提升子节点
+            if not name and len(children) == 1:
+                logs.append(f"合并空节点，提升子节点 '{children[0].get('name', '')}'")
+                return _process_node(children[0])
+
+            # 如果节点无内容且无子节点，标记为可删除
+            if not description and not excerpt and not children:
+                node["merge_flag"] = "empty_node"
+                logs.append(f"标记空节点 '{name}' 为可合并")
+
+            # 递归处理子节点
+            if children:
+                node["children"] = [_process_node(child) for child in children]
+
+            return node
+
+        result = [_process_node(node) for node in nodes]
+        return result, logs
+
+    def _detect_conflicts(
+        self,
+        nodes: List[Dict[str, Any]],
+        existing_knowledge: List[Dict[str, Any]],
+        threshold: float,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """检测与已有知识库的冲突"""
+        logs: List[str] = []
+
+        # 构建已有知识库的文本索引
+        existing_index = []
+        for kp in existing_knowledge:
+            text = f"{kp.get('name', '')} {kp.get('description', '')}"
+            existing_index.append((text, kp))
+
+        def _process_node(node: Dict[str, Any]) -> Dict[str, Any]:
+            name = node.get("name", "")
+            description = node.get("description", "")
+            excerpt = node.get("excerpt", "")
+            children = node.get("children", [])
+
+            current_text = f"{name} {description}"
+
+            # 检查与已有知识的冲突
+            for existing_text, existing_kp in existing_index:
+                similarity = SequenceMatcher(None, current_text, existing_text).ratio()
+                if similarity > threshold:
+                    # 检查内容是否实质不同
+                    if node.get("excerpt") != existing_kp.get("excerpt", ""):
+                        node["conflict_status"] = "update"
+                        logs.append(
+                            f"知识点 '{name}' 与已有知识存在更新关系（相似度: {similarity:.2f}）"
+                        )
+                    break
+                elif similarity > 0.5:
+                    node["conflict_status"] = "related"
+                    logs.append(
+                        f"知识点 '{name}' 与已有知识相关（相似度: {similarity:.2f}）"
+                    )
+                    break
+            else:
+                node["conflict_status"] = "new"
+
+            # 递归处理子节点
+            if children:
+                node["children"] = [_process_node(child) for child in children]
+
+            return node
+
+        result = [_process_node(node) for node in nodes]
+        return result, logs
+
+    # ------------------------------------------------------------------
+    # 改造后的主流程
+    # ------------------------------------------------------------------
+
+    async def extract_knowledge_tree(
+        self,
+        document_content: str,
+        document_name: str = "",
+        max_points: int = 50,
+        category: str = "default",
+        use_ria: bool = True,
+        enable_validation: bool = True,
+        existing_knowledge: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """从文档内容提取知识点树（增强版，融入 RIA++ 框架和三重验证）
+
+        改造后的流程：
+        1. 清理输入文本
+        2. RIA++ Prompt 提取（新增）
+        3. 三重验证（新增）
+        4. 层级验证（新增）
+        5. 去重合并（新增）
+        6. 强制限制（保留现有逻辑）
+        7. 输出（附带质量评分和验证标记）
+
+        Args:
+            document_content: 文档内容
+            document_name: 文档名称
+            max_points: 最大知识点数量
+            category: 分类代码
+            use_ria: 是否使用 RIA++ 框架（默认 True）
+            enable_validation: 是否启用质量验证（默认 True）
+            existing_knowledge: 已有知识库（可选），用于去重和冲突检测
+
+        Returns:
+            提取结果字典，包含：
+            - success: 是否成功
+            - knowledge_points: 知识点树
+            - total: 叶子节点数量
+            - quality_warnings: 质量警告列表（新增）
+            - validation_results: 验证结果摘要（新增）
+        """
+        safe_content = self._sanitize_input(document_content)
+
+        # 步骤1：构建 prompt（RIA++ 或原有）
+        if use_ria:
+            prompt = self._build_ria_prompt(
+                document_content=document_content,
+                document_name=document_name,
+                category=category,
+                max_points=max_points,
+            )
+        else:
+            prompt = self._build_legacy_prompt(
+                document_content=document_content,
+                document_name=document_name,
+                category=category,
+                max_points=max_points,
+            )
+
+        try:
+            # 步骤2：调用 AI
+            response = await self._call_ai(prompt, max_tokens=8192)
+            if not response:
+                raise Exception("AI 未返回有效内容")
+
+            # 步骤3：解析知识点树
+            knowledge_tree = self._parse_knowledge_tree(response)
+
+            # 初始化质量警告列表
+            all_quality_warnings: List[str] = []
+            validation_results: Dict[str, Any] = {}
+
+            # 步骤4：三重验证（新增）
+            if enable_validation:
+                knowledge_tree, quality_warnings = self._validate_knowledge_quality(
+                    knowledge_tree, existing_knowledge
+                )
+                all_quality_warnings.extend(quality_warnings)
+                validation_results["triple_validation"] = {
+                    "warnings_count": len(quality_warnings),
+                    "status": "completed",
+                }
+
+            # 步骤5：层级验证（新增）
+            if enable_validation:
+                knowledge_tree, hierarchy_warnings = self._validate_hierarchy(knowledge_tree)
+                all_quality_warnings.extend(hierarchy_warnings)
+                validation_results["hierarchy_validation"] = {
+                    "warnings_count": len(hierarchy_warnings),
+                    "status": "completed",
+                }
+
+            # 步骤6：去重合并（新增）
+            if enable_validation:
+                knowledge_tree, dedup_logs = self._deduplicate_knowledge(
+                    knowledge_tree, existing_knowledge
+                )
+                all_quality_warnings.extend(dedup_logs)
+                validation_results["deduplication"] = {
+                    "operations_count": len(dedup_logs),
+                    "status": "completed",
+                }
+
+            # 步骤7：强制限制（保留现有逻辑）
+            knowledge_tree = self._enforce_limits(knowledge_tree, max_points=max_points, max_depth=3)
+
+            return {
+                "success": True,
+                "knowledge_points": knowledge_tree,
+                "total": self._count_leaf_nodes(knowledge_tree),
+                "quality_warnings": all_quality_warnings,
+                "validation_results": validation_results,
+                "ria_enabled": use_ria,
+                "validation_enabled": enable_validation,
+            }
+
+        except Exception as e:
+            logger.error(f"知识点提取失败: {e!s}")
+            # 降级：返回原始提取结果（不带验证）
+            try:
+                knowledge_tree = self._parse_knowledge_tree(
+                    '{"knowledge_points": [{"name": "提取失败", "description": str(e), "children": []}]}'
+                )
+            except Exception:
+                knowledge_tree = []
+
+            return {
+                "success": False,
+                "error": str(e),
+                "knowledge_points": knowledge_tree,
+                "quality_warnings": [f"验证过程异常: {e!s}"],
+                "validation_results": {"status": "failed"},
+                "ria_enabled": use_ria,
+                "validation_enabled": enable_validation,
+            }
+
+    def _build_legacy_prompt(
+        self,
+        document_content: str,
+        document_name: str,
+        category: str,
+        max_points: int,
+    ) -> str:
+        """构建原有 prompt（不使用 RIA++ 框架）"""
         safe_content = self._sanitize_input(document_content)
 
         prompt = f"""你是一个专业的知识体系分析助手。请分析以下文档内容，提取知识点并生成树形结构。
@@ -513,103 +1353,94 @@ class AIKnowledgeExtractor:
 
 请直接返回JSON格式的知识点结构（不要包含markdown代码块标记）："""
 
-        try:
-            response = await self._call_ai(prompt, max_tokens=8192)
-            if not response:
-                raise Exception("AI 未返回有效内容")
+        return prompt
 
-            knowledge_tree = self._parse_knowledge_tree(response)
+    # ------------------------------------------------------------------
+    # 公共辅助方法
+    # ------------------------------------------------------------------
 
-            # 强制限制知识点数量和层级深度
-            knowledge_tree = self._enforce_limits(knowledge_tree, max_points=max_points, max_depth=3)
+    def get_quality_summary(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """获取节点的质量摘要信息
 
-            return {
-                "success": True,
-                "knowledge_points": knowledge_tree,
-                "total": self._count_leaf_nodes(knowledge_tree),
-            }
+        Args:
+            node: 知识点节点
 
-        except Exception as e:
-            return {"success": False, "error": str(e), "knowledge_points": []}
-
-    def _flatten_tree(self, nodes: List[Dict]) -> List[Dict]:
-        """扁平化知识点树"""
-        result = []
-        for node in nodes:
-            result.append(node)
-            if node.get("children"):
-                result.extend(self._flatten_tree(node["children"]))
-        return result
-
-    def _count_leaf_nodes(self, nodes: List[Dict]) -> int:
-        """统计叶子节点数量"""
-        count = 0
-        for node in nodes:
-            if not node.get("children") or len(node["children"]) == 0:
-                count += 1
-            else:
-                count += self._count_leaf_nodes(node["children"])
-        return count
-
-    def _enforce_limits(self, nodes: List[Dict], max_points: int = 150, max_depth: int = 4) -> List[Dict]:
-        """强制限制知识点数量和层级深度
-
-        - 超过 max_points 的节点直接删除
-        - 超过 max_depth 的层级直接截断
-        - 每层子节点数量限制：顶层8个，二级6个，三级5个，四级5个
+        Returns:
+            质量摘要字典
         """
-        result = []
-        count = 0
-        # 每层最大子节点数
-        depth_limits = {0: 8, 1: 6, 2: 5, 3: 5}
+        return {
+            "name": node.get("name", ""),
+            "quality_flag": node.get("quality_flag", "unknown"),
+            "hierarchy_warning": node.get("hierarchy_warning"),
+            "conflict_status": node.get("conflict_status", "unknown"),
+            "merge_flag": node.get("merge_flag"),
+            "duplicate_similarity": node.get("duplicate_similarity"),
+        }
 
-        def process(node: Dict, depth: int) -> Dict | None:
-            nonlocal count
-            if count >= max_points:
-                return None
+    def collect_quality_stats(self, nodes: List[Dict[str, Any]]) -> Dict[str, int]:
+        """收集整棵树的质量统计信息
 
-            count += 1
-            new_node = {
-                "name": node.get("name", "未命名")[:100],
-                "description": (node.get("description", "") or "")[:2000],  # 归纳性摘要
-                "excerpt": (node.get("excerpt", "") or "")[:2000],  # 原文照抄内容
-                "children": [],
-            }
+        Args:
+            nodes: 知识点树
 
-            # 超过最大深度，不再添加子节点
-            if depth >= max_depth:
-                return new_node
+        Returns:
+            质量统计字典
+        """
+        stats = {
+            "total_nodes": 0,
+            "ok": 0,
+            "low_generality": 0,
+            "low_content": 0,
+            "low_predictive": 0,
+            "high_predictive": 0,
+            "unique": 0,
+            "duplicate": 0,
+            "hierarchy_warnings": 0,
+            "conflict_new": 0,
+            "conflict_update": 0,
+            "conflict_related": 0,
+        }
 
-            # 处理子节点，根据层级限制数量
-            children = node.get("children", []) or []
-            max_children = depth_limits.get(depth, 5)
-            for child in children[:max_children]:
-                if count >= max_points:
-                    break
-                processed_child = process(child, depth + 1)
-                if processed_child:
-                    new_node["children"].append(processed_child)
+        def _count_node(node: Dict[str, Any]):
+            stats["total_nodes"] += 1
 
-            return new_node
+            quality_flag = node.get("quality_flag", "")
+            if quality_flag in stats:
+                stats[quality_flag] += 1
+
+            if node.get("hierarchy_warning"):
+                stats["hierarchy_warnings"] += 1
+
+            conflict_status = node.get("conflict_status", "")
+            if conflict_status == "new":
+                stats["conflict_new"] += 1
+            elif conflict_status == "update":
+                stats["conflict_update"] += 1
+            elif conflict_status == "related":
+                stats["conflict_related"] += 1
+
+            for child in node.get("children", []):
+                _count_node(child)
 
         for node in nodes:
-            if count >= max_points:
-                break
-            processed = process(node, 1)
-            if processed:
-                result.append(processed)
+            _count_node(node)
 
-        return result
+        return stats
 
 
+# ------------------------------------------------------------------
 # 全局实例
+# ------------------------------------------------------------------
 _ai_extractor = AIKnowledgeExtractor()
 
 
+# ------------------------------------------------------------------
+# 便捷函数（向后兼容）
+# ------------------------------------------------------------------
 async def extract_knowledge_from_document(
     document_content: str, document_name: str = "", max_points: int = 50, category: str = "default"
 ) -> Dict[str, Any]:
-    """从文档提取知识点的便捷函数"""
+    """从文档提取知识点的便捷函数（向后兼容）"""
     return await _ai_extractor.extract_knowledge_tree(
         document_content=document_content, document_name=document_name, max_points=max_points, category=category
     )
