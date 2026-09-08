@@ -243,7 +243,7 @@ def batch_reject_questions(
 @router.get("/{question_id}", response_model=AuditQuestionResponse)
 def get_question_for_audit(
     question_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("audit")),
     db: Session = Depends(get_db),
 ):
     """获取题目审核详情"""
@@ -329,7 +329,7 @@ def reject_question(
 @router.get("/{question_id}/logs", response_model=List[AuditLogResponse])
 def get_question_audit_logs(
     question_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("audit")),
     db: Session = Depends(get_db),
 ):
     """获取题目的审核历史日志"""
@@ -339,7 +339,7 @@ def get_question_audit_logs(
 
 @router.get("/statistics/summary")
 def get_audit_statistics(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("audit")),
     db: Session = Depends(get_db),
 ):
     """获取审核统计信息"""

@@ -44,6 +44,12 @@ from app.utils.security import get_current_user, require_teacher_or_admin
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+def _require_paper_owner(paper: ExamPaper, current_user: User) -> None:
+    """校验试卷归属（评估 P1-10 修复）：管理员或创建者才能操作。"""
+    if current_user.role != 1 and paper.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作该试卷")
+
 # 评估 P2-1/路由顺序修复：先生成组卷子路由（/auto-generate/*、/generate/{task_id}/progress
 # 等静态/前缀路径）必须先于 /{paper_id} 注册，否则会被参数路由遮蔽（此前
 # GET /generate/{task_id}/progress 被 GET /{paper_id} 遮蔽导致 422）。
@@ -343,6 +349,8 @@ def update_paper(
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
 
+    _require_paper_owner(paper, current_user)
+
     if paper.status == "published":
         raise HTTPException(status_code=400, detail="Cannot update a published paper")
 
@@ -390,6 +398,8 @@ def delete_paper(
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
 
+    _require_paper_owner(paper, current_user)
+
     paper.status = "archived"
     db.commit()
     return None
@@ -404,6 +414,8 @@ def publish_paper(
     paper = db.query(ExamPaper).filter(ExamPaper.id == paper_id).first()
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
+
+    _require_paper_owner(paper, current_user)
 
     if paper.status == "published":
         raise HTTPException(status_code=400, detail="Paper is already published")
@@ -472,6 +484,10 @@ def export_paper(
     if not paper:
         raise HTTPException(status_code=404, detail="试卷不存在")
 
+    # 评估 P1-10 修复：未发布试卷仅创建者/管理员可导出
+    if paper.status != "published":
+        _require_paper_owner(paper, current_user)
+
     # 获取科目信息 - 试卷的 subject_id 关联的是 ExamType 表
     exam_type = db.query(ExamType).filter(ExamType.id == paper.subject_id).first()
     subject_name = exam_type.name if exam_type else "未知科目"
@@ -533,6 +549,10 @@ def get_paper_analysis(
 
     if not paper:
         raise HTTPException(status_code=404, detail="试卷不存在")
+
+    # 评估 P1-10 修复：未发布试卷仅创建者/管理员可查看分析
+    if paper.status != "published":
+        _require_paper_owner(paper, current_user)
 
     sorted_questions = sorted(paper.exam_paper_questions, key=lambda x: x.order)
 
@@ -759,7 +779,7 @@ def check_question_similarity(
     paper_id: int,
     request: SimilarityCheckRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """题目相似度检测：检查试卷中是否存在相似/重复题目
 
@@ -783,6 +803,8 @@ def check_question_similarity(
 
     if not paper:
         raise HTTPException(status_code=404, detail="试卷不存在")
+
+    _require_paper_owner(paper, current_user)
 
     sorted_questions = sorted(paper.exam_paper_questions, key=lambda x: x.order)
 

@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _require_template_owner(template: AIPromptTemplate, current_user: User) -> None:
+    """校验模板归属（评估 P1-10 修复）：管理员或创建者才能操作。"""
+    if current_user.role != 1 and template.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作该模板")
+
+
 @router.get("/templates", response_model=List[AiTemplateResponse])
 def list_templates(
     template_type: str | None = None,
@@ -27,7 +33,10 @@ def list_templates(
     query = db.query(AIPromptTemplate)
     if template_type:
         query = query.filter(AIPromptTemplate.template_type == template_type)
-    if status:
+    # 评估 P1-10 修复：非管理员只能看到活跃模板
+    if current_user.role != 1:
+        query = query.filter(AIPromptTemplate.status == "active")
+    elif status:
         query = query.filter(AIPromptTemplate.status == status)
     else:
         query = query.filter(AIPromptTemplate.status == "active")
@@ -67,6 +76,9 @@ def get_template(
     template = db.query(AIPromptTemplate).filter(AIPromptTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    # 评估 P1-10 修复：非活跃模板仅创建者/管理员可查看
+    if template.status != "active" and current_user.role != 1 and template.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看该模板")
     return template
 
 
@@ -81,6 +93,7 @@ def update_template(
     template = db.query(AIPromptTemplate).filter(AIPromptTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    _require_template_owner(template, current_user)
     update_data = template_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -99,6 +112,7 @@ def delete_template(
     template = db.query(AIPromptTemplate).filter(AIPromptTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    _require_template_owner(template, current_user)
     template.status = "inactive"
     db.commit()
     return None

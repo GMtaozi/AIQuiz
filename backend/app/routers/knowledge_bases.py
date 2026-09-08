@@ -55,6 +55,12 @@ def _resolve_category_exam_type(
     return resolved_category, resolved_exam_type
 
 
+def _require_kb_owner(kb: KnowledgeBase, current_user: User) -> None:
+    """校验知识库归属（评估 P1-10 修复）：管理员或创建者才能操作。"""
+    if current_user.role != 1 and kb.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作该知识库")
+
+
 def _kb_to_response(kb: KnowledgeBase, db: Session) -> KnowledgeBaseResponse:
     """将 KnowledgeBase ORM 对象转换为响应模型，附带统计数"""
     entries_count = db.query(KnowledgeEntry).filter(KnowledgeEntry.knowledge_base_id == kb.id).count()
@@ -171,6 +177,8 @@ def update_knowledge_base(
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
 
+    _require_kb_owner(kb, current_user)
+
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(kb, field, value)
@@ -191,6 +199,8 @@ def delete_knowledge_base(
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
+
+    _require_kb_owner(kb, current_user)
 
     try:
         # 软删知识库
@@ -226,6 +236,8 @@ async def upload_document(
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.status == 1).first()
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
+
+    _require_kb_owner(kb, current_user)
 
     # 读取文件内容
     content = await file.read()
@@ -300,6 +312,10 @@ def list_entries(
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
 
+    # 评估 P1-10 修复：与列表接口口径一致——非管理员只能访问公开/共享/自己创建的知识库
+    if current_user.role != 1 and kb.visibility not in ("public", "shared") and kb.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看该知识库")
+
     entries = (
         db.query(KnowledgeEntry).filter(KnowledgeEntry.knowledge_base_id == kb_id).order_by(KnowledgeEntry.order).all()
     )
@@ -332,6 +348,12 @@ def get_entry(
     )
     if not entry:
         raise HTTPException(status_code=404, detail="知识条目不存在")
+
+    # 评估 P1-10 修复：与列表接口口径一致——非管理员只能访问公开/共享/自己创建的知识库
+    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.status == 1).first()
+    if kb and current_user.role != 1 and kb.visibility not in ("public", "shared") and kb.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看该知识库")
+
     return entry
 
 
@@ -345,6 +367,10 @@ def list_knowledge_points(
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.status == 1).first()
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
+
+    # 评估 P1-10 修复：与列表接口口径一致——非管理员只能访问公开/共享/自己创建的知识库
+    if current_user.role != 1 and kb.visibility not in ("public", "shared") and kb.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看该知识库")
 
     points = (
         db.query(KnowledgePoint)
@@ -417,6 +443,7 @@ async def analyze_entry(
     """
     kb = _get_kb_or_404(db, kb_id)
     entry = _get_entry_or_404(db, kb_id, entry_id)
+    _require_kb_owner(kb, current_user)
 
     content = entry.content
     if len(content.strip()) < 20:
@@ -487,6 +514,7 @@ def import_points_from_entry(
     """确认导入从条目提取的知识点，创建 KnowledgePoint（带 kb_id + entry_id + excerpt）"""
     kb = _get_kb_or_404(db, kb_id)
     entry = _get_entry_or_404(db, kb_id, entry_id)
+    _require_kb_owner(kb, current_user)
 
     if not request.knowledge_points:
         raise HTTPException(status_code=400, detail="知识点列表不能为空")
@@ -555,6 +583,7 @@ async def analyze_all_entries(
     对每个条目执行规则/AI 提取，返回每个条目的知识点数量和总体统计。
     """
     kb = _get_kb_or_404(db, kb_id)
+    _require_kb_owner(kb, current_user)
     entries = db.query(KnowledgeEntry).filter(KnowledgeEntry.knowledge_base_id == kb_id).all()
     if not entries:
         return {

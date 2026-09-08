@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["knowledge"])
 
 
+def _require_knowledge_owner(node: KnowledgePoint, current_user: User) -> None:
+    """校验知识点归属（评估 P1-10 修复）：管理员或创建者才能操作。"""
+    if current_user.role != 1 and node.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作该知识点")
+
+
 @router.get("/{knowledge_id}")
 def get_knowledge_point(
     knowledge_id: int,
@@ -31,6 +37,8 @@ def get_knowledge_point(
     node = db.query(KnowledgePoint).filter(KnowledgePoint.id == knowledge_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="知识点不存在")
+
+    _require_knowledge_owner(node, current_user)
 
     # 获取子节点数量
     children_count = db.query(func.count(KnowledgePoint.id)).filter(KnowledgePoint.parent_id == knowledge_id).scalar()
@@ -108,6 +116,8 @@ def update_knowledge_point(
     if not node:
         raise HTTPException(status_code=404, detail="知识点不存在")
 
+    _require_knowledge_owner(node, current_user)
+
     # 验证父节点存在
     if data.parent_id is not None and data.parent_id != node.id:
         if data.parent_id > 0:
@@ -157,6 +167,8 @@ def delete_knowledge_point(
     node = db.query(KnowledgePoint).filter(KnowledgePoint.id == knowledge_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="知识点不存在")
+
+    _require_knowledge_owner(node, current_user)
 
     try:
         # 收集所有要删除的节点ID（先收集再删除，避免在迭代中修改）
