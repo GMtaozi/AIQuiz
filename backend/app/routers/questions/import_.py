@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,6 +11,7 @@ from app.models.user import User
 from app.routers.questions.parsers import _parse_excel_questions, _parse_word_questions
 from app.routers.questions.utils import _detect_file_format
 from app.schemas.question import ImportResult, PreviewResult
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.utils.security import require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
@@ -245,6 +246,19 @@ async def import_questions(
                 errors.append(f"第 {idx + 1} 题导入失败: {e!s}")
                 logger.warning(f"导入题目失败: {e}")
 
+        db.commit()
+
+        # 记录操作日志
+        log_operation(
+            db=db,
+            user=current_user,
+            action=OperationAction.IMPORT,
+            resource_type=ResourceType.QUESTION,
+            description=f"批量导入题目: 成功{success_count}道, 失败{fail_count}道",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details={"success_count": success_count, "fail_count": fail_count},
+        )
         db.commit()
 
         return ImportResult(success_count=success_count, fail_count=fail_count, errors=errors[:50])

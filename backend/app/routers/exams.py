@@ -25,6 +25,7 @@ from app.schemas.exam import (
     UserAnswerCreate,
     UserAnswerResponse,
 )
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.utils.security import get_current_user, require_teacher_or_admin
 
 router = APIRouter(tags=["exams"])
@@ -421,6 +422,19 @@ def start_exam(
     for r in records:
         db.refresh(r)
 
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.START,
+        resource_type=ResourceType.EXAM,
+        resource_id=exam_id,
+        description=f"开始考试: {exam_paper.title}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
+
     return records
 
 
@@ -429,6 +443,7 @@ def submit_exam(
     exam_id: int,
     exam_record_id: int,
     answers: List[UserAnswerCreate],
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -499,6 +514,19 @@ def submit_exam(
         record.score = total
         if not has_subjective:
             record.status = "graded"  # 纯客观卷直接出分
+
+        # 记录操作日志
+        log_operation(
+            db=db,
+            user=current_user,
+            action=OperationAction.SUBMIT,
+            resource_type=ResourceType.EXAM,
+            resource_id=exam_id,
+            description=f"提交考试: record_id={record.id}, 得分={total}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details={"score": total, "has_subjective": has_subjective},
+        )
 
         db.commit()
         db.refresh(record)

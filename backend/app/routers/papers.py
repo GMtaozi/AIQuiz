@@ -8,7 +8,7 @@ import io
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -39,6 +39,7 @@ from app.schemas.paper import (
     SimilarityCheckResponse,
     SimilarQuestionPair,
 )
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.utils.security import get_current_user, require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
@@ -218,6 +219,20 @@ def _create_fixed_paper(paper_data: PaperCreateUnion, db: Session, user_id: int)
         .first()
     )
 
+    # 记录操作日志
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        log_operation(
+            db=db,
+            user=user,
+            action=OperationAction.CREATE,
+            resource_type=ResourceType.PAPER,
+            resource_id=paper.id,
+            description=f"创建试卷: {paper.title}",
+            details={"paper_type": "fixed", "question_count": len(paper_data.questions)},
+        )
+        db.commit()
+
     return PaperDetailResponse.from_orm_with_status_int(paper)
 
 def _create_random_paper(paper_data: PaperCreateUnion, db: Session, user_id: int) -> PaperDetailResponse:
@@ -307,6 +322,20 @@ def _create_random_paper(paper_data: PaperCreateUnion, db: Session, user_id: int
         .first()
     )
 
+    # 记录操作日志
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        log_operation(
+            db=db,
+            user=user,
+            action=OperationAction.CREATE,
+            resource_type=ResourceType.PAPER,
+            resource_id=paper.id,
+            description=f"创建试卷: {paper.title}",
+            details={"paper_type": "random", "question_count": rules.total_count},
+        )
+        db.commit()
+
     return PaperDetailResponse.from_orm_with_status_int(paper)
 
 @router.get("/{paper_id}", response_model=PaperDetailResponse)
@@ -390,6 +419,7 @@ def update_paper(
 @router.delete("/{paper_id}", status_code=204)
 def delete_paper(
     paper_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
@@ -401,12 +431,25 @@ def delete_paper(
     _require_paper_owner(paper, current_user)
 
     paper.status = "archived"
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.ARCHIVE,
+        resource_type=ResourceType.PAPER,
+        resource_id=paper.id,
+        description=f"归档试卷: {paper.title}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     db.commit()
     return None
 
 @router.post("/{paper_id}/publish", response_model=PaperDetailResponse)
 def publish_paper(
     paper_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
@@ -428,6 +471,18 @@ def publish_paper(
         raise HTTPException(status_code=400, detail="Paper must have at least one question")
 
     paper.status = "published"
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.PUBLISH,
+        resource_type=ResourceType.PAPER,
+        resource_id=paper.id,
+        description=f"发布试卷: {paper.title}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     db.commit()
     db.refresh(paper)
 

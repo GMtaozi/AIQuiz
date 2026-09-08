@@ -3,7 +3,7 @@
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import UserRole
@@ -22,6 +22,7 @@ from app.schemas.question import (
     QuestionStatistics,
     QuestionUpdate,
 )
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.utils.security import get_current_user, require_teacher_or_admin
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,10 @@ def list_questions(
 
 @router.post("/", response_model=QuestionDetailResponse, status_code=201)
 def create_question(
-    question_data: QuestionCreate, db: Session = Depends(get_db), current_user: User = Depends(require_teacher_or_admin)
+    question_data: QuestionCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_teacher_or_admin),
 ):
     """Create a question with its options (teacher/admin only)."""
     if question_data.question_type not in VALID_QUESTION_TYPES:
@@ -210,6 +214,19 @@ def create_question(
                 order=opt_data.order if opt_data.order is not None else i,
             )
             db.add(option)
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.CREATE,
+        resource_type=ResourceType.QUESTION,
+        resource_id=question.id,
+        description=f"创建题目: {question.content[:50]}...",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details={"question_type": question_data.question_type},
+    )
 
     db.commit()
     db.refresh(question)

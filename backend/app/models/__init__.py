@@ -1,4 +1,5 @@
 from app.models.knowledge import KnowledgeBase, KnowledgeEntry, KnowledgePoint
+from app.models.operation_log import OperationLog
 from app.models.paper_template import PaperTemplate
 from app.models.paper_version import PaperVersion
 from app.models.password_reset import PasswordResetRequest
@@ -25,6 +26,7 @@ __all__ = [
     "KnowledgeBase",
     "KnowledgeEntry",
     "KnowledgePoint",
+    "OperationLog",
     "PaperTemplate",
     "PaperVersion",
     "PasswordResetRequest",

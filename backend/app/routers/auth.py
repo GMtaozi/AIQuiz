@@ -21,6 +21,7 @@ from app.routers.system import get_role_permissions_config, get_security_setting
 from app.schemas.auth import ForgotPasswordRequest, TokenRefreshResponse
 from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.auth import AuthService
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.utils.security import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ def _set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
 
 
 @router.post("/register")
-def register(user: UserCreate, db: Session = Depends(get_db)):
+def register(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Register a new user - defaults to student role (3) with NO permissions."""
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
@@ -159,6 +160,19 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
     _log_operation(db_user.id, "用户注册", f"新用户: {db_user.username}")
 
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=db_user,
+        action=OperationAction.REGISTER,
+        resource_type=ResourceType.USER,
+        resource_id=db_user.id,
+        description=f"新用户注册: {db_user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
+
     # 生成 token 并返回权限信息
     access_token = AuthService.create_access_token({"sub": str(db_user.id), "role": db_user.role})
     # 权限单一来源改造：响应统一为扁平数组，前端不再自行解析角色映射
@@ -172,21 +186,62 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(credentials: UserLogin, db: Session = Depends(get_db)):
+def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login endpoint with rate limiting - accepts JSON format."""
     _check_rate_limit(credentials.username)
 
     user = db.query(User).filter(User.username == credentials.username).first()
     if not user or not bcrypt.verify(credentials.password, user.hashed_password):
         _record_failure(credentials.username)
+        # 记录登录失败
+        log_operation(
+            db=db,
+            user=user if user else User(id=0, username=credentials.username, email="", hashed_password="", role=3),
+            action=OperationAction.LOGIN,
+            resource_type=ResourceType.USER,
+            description=f"登录失败: {credentials.username}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            status="failure",
+            details={"reason": "用户名或密码错误", "username": credentials.username},
+        )
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
 
     # 检查用户状态
     if user.status != 1:
+        # 记录登录失败（账号禁用）
+        log_operation(
+            db=db,
+            user=user,
+            action=OperationAction.LOGIN,
+            resource_type=ResourceType.USER,
+            resource_id=user.id,
+            description=f"登录失败(账号禁用): {user.username}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            status="failure",
+            details={"reason": "账号已被禁用"},
+        )
+        db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
 
     _record_success(credentials.username)
     _log_operation(user.id, "用户登录", f"用户: {user.username}")
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=user,
+        action=OperationAction.LOGIN,
+        resource_type=ResourceType.USER,
+        resource_id=user.id,
+        description=f"用户登录: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
+
     # 获取该用户的有效权限（个性化 menu_permissions 优先，评估 P1-6）
     role_perms = get_role_permissions_config()
     user_permissions = _get_effective_permissions(user, role_perms)
@@ -206,21 +261,61 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/login/json")
-def login_json(credentials: UserLogin, db: Session = Depends(get_db)):
+def login_json(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     """JSON-based login endpoint (used by frontend) with rate limiting."""
     _check_rate_limit(credentials.username)
 
     user = db.query(User).filter(User.username == credentials.username).first()
     if not user or not bcrypt.verify(credentials.password, user.hashed_password):
         _record_failure(credentials.username)
+        # 记录登录失败
+        log_operation(
+            db=db,
+            user=user if user else User(id=0, username=credentials.username, email="", hashed_password="", role=3),
+            action=OperationAction.LOGIN,
+            resource_type=ResourceType.USER,
+            description=f"登录失败: {credentials.username}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            status="failure",
+            details={"reason": "用户名或密码错误", "username": credentials.username},
+        )
+        db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
 
     # 检查用户状态
     if user.status != 1:
+        # 记录登录失败（账号禁用）
+        log_operation(
+            db=db,
+            user=user,
+            action=OperationAction.LOGIN,
+            resource_type=ResourceType.USER,
+            resource_id=user.id,
+            description=f"登录失败(账号禁用): {user.username}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            status="failure",
+            details={"reason": "账号已被禁用"},
+        )
+        db.commit()
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
 
     _record_success(credentials.username)
     _log_operation(user.id, "用户登录", f"用户: {user.username}")
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=user,
+        action=OperationAction.LOGIN,
+        resource_type=ResourceType.USER,
+        resource_id=user.id,
+        description=f"用户登录: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
     # 与 /login 一致：个性化 menu_permissions 优先，角色默认兜底
     role_perms = get_role_permissions_config()
     user_permissions = _get_effective_permissions(user, role_perms)
@@ -274,8 +369,21 @@ def refresh_token(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-def logout():
+def logout(request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """退出登录：清除 httpOnly cookie（评估 P1-4 新增）"""
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.LOGOUT,
+        resource_type=ResourceType.USER,
+        resource_id=current_user.id,
+        description=f"用户登出: {current_user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
+
     response = JSONResponse(status_code=200, content={"message": "已退出登录"})
     response.delete_cookie(key="access_token", path="/")
     return response

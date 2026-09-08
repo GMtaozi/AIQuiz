@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.schemas.knowledge_base import (
 )
 from app.services.ai_knowledge_extractor import extract_knowledge_from_document
 from app.services.document_parser import parse_document
+from app.services.operation_log_service import OperationAction, ResourceType, log_operation
 from app.services.rule_knowledge_extractor import extract_knowledge_by_rules
 from app.services.text_chunker import chunk_document
 from app.utils.security import get_current_user, require_teacher_or_admin
@@ -87,6 +88,7 @@ def _kb_to_response(kb: KnowledgeBase, db: Session) -> KnowledgeBaseResponse:
 @router.post("/", response_model=KnowledgeBaseResponse)
 def create_knowledge_base(
     data: KnowledgeBaseCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
@@ -105,6 +107,20 @@ def create_knowledge_base(
     db.commit()
     db.refresh(kb)
     logger.info("知识库创建: id=%s name=%s by user=%s", kb.id, kb.name, current_user.id)
+
+    # 记录操作日志
+    log_operation(
+        db=db,
+        user=current_user,
+        action=OperationAction.CREATE,
+        resource_type=ResourceType.KNOWLEDGE_BASE,
+        resource_id=kb.id,
+        description=f"创建知识库: {kb.name}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.commit()
+
     return _kb_to_response(kb, db)
 
 
@@ -226,6 +242,7 @@ def delete_knowledge_base(
 async def upload_document(
     kb_id: int,
     file: UploadFile = File(...),
+    request: Request = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_teacher_or_admin),
 ):
@@ -277,6 +294,19 @@ async def upload_document(
         # 更新知识库的全文和文件名
         kb.source_content = text_content
         kb.source_file = filename
+
+        # 记录操作日志
+        log_operation(
+            db=db,
+            user=current_user,
+            action=OperationAction.UPLOAD,
+            resource_type=ResourceType.KNOWLEDGE_BASE,
+            resource_id=kb_id,
+            description=f"上传文档到知识库: {filename}",
+            ip_address=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+            details={"filename": filename, "entries": len(chunks), "chars": len(text_content)},
+        )
 
         db.commit()
         logger.info(
